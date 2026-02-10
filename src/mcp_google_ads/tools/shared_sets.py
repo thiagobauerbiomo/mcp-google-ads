@@ -2,11 +2,21 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from ..auth import get_client, get_service
 from ..coordinator import mcp
-from ..utils import error_response, resolve_customer_id, success_response, validate_enum_value, validate_numeric_id
+from ..utils import (
+    error_response,
+    resolve_customer_id,
+    success_response,
+    validate_enum_value,
+    validate_limit,
+    validate_numeric_id,
+)
+
+logger = logging.getLogger(__name__)
 
 
 @mcp.tool()
@@ -21,6 +31,7 @@ def list_shared_sets(
     """
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
         type_filter = f"WHERE shared_set.type = '{validate_enum_value(set_type, 'set_type')}'" if set_type else ""
 
@@ -48,6 +59,7 @@ def list_shared_sets(
             })
         return success_response({"shared_sets": shared_sets, "count": len(shared_sets)})
     except Exception as e:
+        logger.error("Failed to list shared sets: %s", e, exc_info=True)
         return error_response(f"Failed to list shared sets: {e}")
 
 
@@ -66,6 +78,7 @@ def create_shared_set(
         operation = client.get_type("SharedSetOperation")
         shared_set = operation.create
         shared_set.name = name
+        validate_enum_value(set_type, "set_type")
         shared_set.type_ = getattr(client.enums.SharedSetTypeEnum, set_type)
 
         response = service.mutate_shared_sets(customer_id=cid, operations=[operation])
@@ -77,6 +90,7 @@ def create_shared_set(
             message=f"Shared set '{name}' created",
         )
     except Exception as e:
+        logger.error("Failed to create shared set: %s", e, exc_info=True)
         return error_response(f"Failed to create shared set: {e}")
 
 
@@ -100,6 +114,7 @@ def remove_shared_set(
             message=f"Shared set {shared_set_id} removed",
         )
     except Exception as e:
+        logger.error("Failed to remove shared set: %s", e, exc_info=True)
         return error_response(f"Failed to remove shared set: {e}")
 
 
@@ -112,6 +127,7 @@ def list_shared_set_members(
     """List all members (keywords/placements) in a shared set."""
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
 
         query = f"""
@@ -139,6 +155,7 @@ def list_shared_set_members(
 
         return success_response({"members": members, "count": len(members)})
     except Exception as e:
+        logger.error("Failed to list shared set members: %s", e, exc_info=True)
         return error_response(f"Failed to list shared set members: {e}")
 
 
@@ -165,6 +182,7 @@ def link_shared_set_to_campaign(
             message=f"Shared set {shared_set_id} linked to campaign {campaign_id}",
         )
     except Exception as e:
+        logger.error("Failed to link shared set to campaign: %s", e, exc_info=True)
         return error_response(f"Failed to link shared set to campaign: {e}")
 
 
@@ -189,4 +207,5 @@ def unlink_shared_set_from_campaign(
             message=f"Shared set {shared_set_id} unlinked from campaign {campaign_id}",
         )
     except Exception as e:
+        logger.error("Failed to unlink shared set from campaign: %s", e, exc_info=True)
         return error_response(f"Failed to unlink shared set from campaign: {e}")

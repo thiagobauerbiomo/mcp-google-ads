@@ -4,15 +4,16 @@
 ```
 src/mcp_google_ads/
 ├── __init__.py        # __version__ = "0.1.0"
-├── server.py          # Entry point (importa tools, roda mcp.run())
-├── coordinator.py     # Singleton FastMCP("google-ads") com instructions detalhadas
-├── auth.py            # GoogleAdsClient singleton via OAuth2
+├── server.py          # Entry point (importa tools, roda mcp.run(), LOG_LEVEL via env)
+├── coordinator.py     # Singleton FastMCP("google-ads") com instructions detalhadas (123 tools)
+├── auth.py            # GoogleAdsClient singleton via OAuth2 (retry com backoff exponencial)
 ├── config.py          # GoogleAdsConfig dataclass (env vars)
 ├── utils.py           # Helpers: resolve_customer_id, proto_to_dict, success/error_response,
-│                      #   format_micros, to_micros, validação GAQL (validate_status,
-│                      #   validate_date_range, validate_date, validate_numeric_id, build_date_clause)
+│                      #   format_micros (arredonda 2 casas), to_micros,
+│                      #   validação GAQL (validate_status, validate_date_range, validate_date,
+│                      #   validate_numeric_id, validate_enum_value, validate_limit, build_date_clause)
 ├── exceptions.py      # GoogleAdsMCPError, AuthenticationError
-└── tools/             # 20 modulos
+└── tools/             # 20 modulos (todos com logging estruturado)
     ├── accounts.py           #  4: list_accessible_customers, get_customer_info, get_account_hierarchy, list_customer_clients
     ├── account_management.py #  3: list_account_links, get_billing_info, list_account_users
     ├── campaigns.py          #  7: list, get, create, update, set_status, remove, list_labels
@@ -38,11 +39,14 @@ src/mcp_google_ads/
 ## Como Rodar
 ```bash
 uv run mcp-google-ads
+# LOG_LEVEL=DEBUG uv run mcp-google-ads  (para debug)
 ```
 
 ## Testes
 ```bash
-uv run pytest tests/ -v
+uv run pytest tests/ -v              # com cobertura
+uv run ruff check src/               # linter
+uv run ruff check src/ --fix         # auto-fix
 ```
 
 ## Como Adicionar Novo Tool
@@ -52,6 +56,9 @@ uv run pytest tests/ -v
 4. Usar `Annotated[tipo, "descricao"]` para parametros
 5. Retornar `success_response(data)` ou `error_response(msg)`
 6. Importar no `tools/__init__.py` e no `server.py`
+7. Adicionar `import logging` e `logger = logging.getLogger(__name__)`
+8. Usar `logger.error("Failed to ...: %s", e, exc_info=True)` em todos os except
+9. Validar TODOS os inputs do usuario antes de interpolar em GAQL
 
 ## Padrao de Resposta
 ```python
@@ -68,7 +75,7 @@ error_response("Descricao do erro", details={"field": "valor"})
 Todas as tools validam inputs antes de interpolar em queries GAQL:
 - `validate_status(s)` — valida contra ENABLED/PAUSED/REMOVED
 - `validate_numeric_id(s)` — garante que IDs são numéricos (remove hifens)
-- `validate_enum_value(s)` — valida enums GAQL (apenas letras, números e underscores)
+- `validate_enum_value(s)` — valida enums antes de getattr(client.enums.XXX, user_param)
 - `validate_date_range(s)` — valida contra ranges permitidos (LAST_30_DAYS, etc.)
 - `validate_date(s)` — valida formato YYYY-MM-DD
 - `validate_limit(n, max)` — valida que limit está entre 1 e max (default 10000)
@@ -85,21 +92,28 @@ Todos os 14 reports suportam datas customizadas:
 - customer_id obrigatorio na maioria das tools
 - Credenciais via env vars (nunca hardcoded)
 - Logs vao para stderr (stdout reservado para JSON-RPC)
+- LOG_LEVEL configurável via env var (default: INFO)
+- Logging estruturado em todos os 20 modulos (logger.error com exc_info=True)
 - Validação de inputs GAQL contra injection (todos os 20 modulos)
+- validate_enum_value antes de todo getattr(client.enums.XXX, user_param)
+- validate_limit em todas as queries com LIMIT
+- validate_date em comparison_report (4 parametros de data)
 - `execute_gaql`: SELECT-only, max 10000 chars, keyword blocklist, logging
 - Batch limits: max 5000 keywords/assets por chamada, 2000 conversions
 - Deduplicação automática em batch de keywords (por text+match_type)
 - Validação de dict params (campos obrigatórios verificados antes do envio)
-- Dashboard com logging de erros (nunca swallow silencioso)
+- Auth com retry e backoff exponencial (3 tentativas)
+- Timeout de 30s em create_image_asset (urllib)
 
-## Testes (151 testes)
-Cobertura de todos os 20 modulos de tools + utils, config, auth:
+## Testes (202 testes, 53% cobertura)
+Cobertura de todos os 20 modulos de tools + utils, config, auth, server:
 ```
 tests/
 ├── conftest.py              # fixtures: mock_config, mock_google_ads_client, assert_success/error
-├── test_utils.py            # 27 testes (todos os validadores)
+├── test_utils.py            # 30 testes (todos os validadores + proto_to_dict)
 ├── test_config.py           #  6 testes
 ├── test_auth.py             #  4 testes
+├── test_server.py           #  2 testes (main + LOG_LEVEL)
 ├── test_campaigns.py        #  6 testes
 ├── test_ad_groups.py        #  2 testes
 ├── test_ads.py              #  2 testes
@@ -117,15 +131,26 @@ tests/
 ├── test_recommendations.py  #  9 testes
 ├── test_experiments.py      # 10 testes (validate_numeric_id)
 ├── test_account_management.py # 7 testes
-└── test_campaign_types.py   #  4 testes
+├── test_campaign_types.py   #  4 testes
+├── test_accounts.py         # 14 testes (todas as 4 tools)
+└── test_budgets.py          # 32 testes (todas as 4 tools + micros + delivery_method)
 ```
 
+Modulos com 100% cobertura: auth, config, coordinator, exceptions, utils, accounts, account_management, budgets, search
+
 ## Dependencias Principais
-- `google-ads >= 28.0.0` (API v23)
+- `google-ads >= 28.0.0, < 29.0.0` (API v23, pinned major)
 - `mcp[cli] >= 1.2.0` (FastMCP)
 - `pydantic >= 2.0.0`
 - Python >= 3.12
-- Dev: `pytest >= 8.0`, `pytest-cov`, `pytest-mock`
+- Dev: `pytest >= 8.0`, `pytest-cov >= 5.0`, `pytest-mock >= 3.14`, `ruff >= 0.4.0`
+
+## Linter (ruff)
+Configurado em pyproject.toml:
+- Line length: 120
+- Rules: E, F, W, I, UP, B, SIM
+- Ignore: E501, SIM108, SIM113
+- Tests: F401, F811 ignorados
 
 ## API Reference
 - Campos GAQL: https://developers.google.com/google-ads/api/fields/v23/overview

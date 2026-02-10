@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from ..auth import get_service
@@ -12,8 +13,12 @@ from ..utils import (
     format_micros,
     resolve_customer_id,
     success_response,
+    validate_date,
+    validate_limit,
     validate_numeric_id,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _build_where(
@@ -46,6 +51,7 @@ def campaign_performance_report(
     """Get campaign performance metrics: impressions, clicks, cost, conversions, CTR, CPC."""
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
 
         conditions = ["metrics.impressions > 0"]
@@ -91,6 +97,7 @@ def campaign_performance_report(
             })
         return success_response({"report": rows, "count": len(rows)})
     except Exception as e:
+        logger.error("Failed to get campaign performance: %s", e, exc_info=True)
         return error_response(f"Failed to get campaign performance: {e}")
 
 
@@ -106,6 +113,7 @@ def ad_group_performance_report(
     """Get ad group performance metrics."""
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
 
         conditions = ["metrics.impressions > 0"]
@@ -150,6 +158,7 @@ def ad_group_performance_report(
             })
         return success_response({"report": rows, "count": len(rows)})
     except Exception as e:
+        logger.error("Failed to get ad group performance: %s", e, exc_info=True)
         return error_response(f"Failed to get ad group performance: {e}")
 
 
@@ -166,6 +175,7 @@ def ad_performance_report(
     """Get ad-level performance metrics including ad strength."""
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
 
         conditions = ["metrics.impressions > 0"]
@@ -216,6 +226,7 @@ def ad_performance_report(
             })
         return success_response({"report": rows, "count": len(rows)})
     except Exception as e:
+        logger.error("Failed to get ad performance: %s", e, exc_info=True)
         return error_response(f"Failed to get ad performance: {e}")
 
 
@@ -232,6 +243,7 @@ def keyword_performance_report(
     """Get keyword performance with quality score, CTR, and conversion data."""
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
 
         conditions = ["ad_group_criterion.type = 'KEYWORD'", "metrics.impressions > 0"]
@@ -281,6 +293,7 @@ def keyword_performance_report(
             })
         return success_response({"report": rows, "count": len(rows)})
     except Exception as e:
+        logger.error("Failed to get keyword performance: %s", e, exc_info=True)
         return error_response(f"Failed to get keyword performance: {e}")
 
 
@@ -296,6 +309,7 @@ def search_terms_report(
     """Get search terms that triggered ads. Essential for finding negative keyword opportunities."""
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
 
         conditions = ["metrics.impressions > 0"]
@@ -340,6 +354,7 @@ def search_terms_report(
             })
         return success_response({"report": rows, "count": len(rows)})
     except Exception as e:
+        logger.error("Failed to get search terms report: %s", e, exc_info=True)
         return error_response(f"Failed to get search terms report: {e}")
 
 
@@ -355,6 +370,7 @@ def audience_performance_report(
     """Get audience segment performance metrics."""
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
 
         conditions = ["metrics.impressions > 0"]
@@ -395,6 +411,7 @@ def audience_performance_report(
             })
         return success_response({"report": rows, "count": len(rows)})
     except Exception as e:
+        logger.error("Failed to get audience performance: %s", e, exc_info=True)
         return error_response(f"Failed to get audience performance: {e}")
 
 
@@ -410,6 +427,7 @@ def geographic_performance_report(
     """Get geographic performance by country, region, and city."""
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
 
         conditions = ["metrics.impressions > 0"]
@@ -450,6 +468,7 @@ def geographic_performance_report(
             })
         return success_response({"report": rows, "count": len(rows)})
     except Exception as e:
+        logger.error("Failed to get geographic performance: %s", e, exc_info=True)
         return error_response(f"Failed to get geographic performance: {e}")
 
 
@@ -464,6 +483,7 @@ def change_history_report(
     """Get recent change history showing who made what changes and when."""
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
 
         where = _build_where([], date_range, start_date, end_date, default_range="LAST_7_DAYS")
@@ -495,6 +515,7 @@ def change_history_report(
             })
         return success_response({"changes": rows, "count": len(rows)})
     except Exception as e:
+        logger.error("Failed to get change history: %s", e, exc_info=True)
         return error_response(f"Failed to get change history: {e}")
 
 
@@ -510,6 +531,7 @@ def device_performance_report(
     """Get performance metrics segmented by device (mobile, desktop, tablet)."""
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
 
         conditions = ["metrics.impressions > 0"]
@@ -552,6 +574,7 @@ def device_performance_report(
             })
         return success_response({"report": rows, "count": len(rows)})
     except Exception as e:
+        logger.error("Failed to get device performance: %s", e, exc_info=True)
         return error_response(f"Failed to get device performance: {e}")
 
 
@@ -570,6 +593,7 @@ def hourly_performance_report(
     """
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
 
         conditions = ["metrics.impressions > 0"]
@@ -610,6 +634,7 @@ def hourly_performance_report(
             })
         return success_response({"report": rows, "count": len(rows)})
     except Exception as e:
+        logger.error("Failed to get hourly performance: %s", e, exc_info=True)
         return error_response(f"Failed to get hourly performance: {e}")
 
 
@@ -628,6 +653,7 @@ def age_gender_performance_report(
     """
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
 
         conditions = ["metrics.impressions > 0"]
@@ -701,6 +727,7 @@ def age_gender_performance_report(
             "gender_count": len(gender_rows),
         })
     except Exception as e:
+        logger.error("Failed to get age/gender performance: %s", e, exc_info=True)
         return error_response(f"Failed to get age/gender performance: {e}")
 
 
@@ -719,6 +746,7 @@ def placement_report(
     """
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
 
         conditions = ["metrics.impressions > 0"]
@@ -761,6 +789,7 @@ def placement_report(
             })
         return success_response({"report": rows, "count": len(rows)})
     except Exception as e:
+        logger.error("Failed to get placement report: %s", e, exc_info=True)
         return error_response(f"Failed to get placement report: {e}")
 
 
@@ -776,6 +805,7 @@ def quality_score_report(
     """
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
 
         conditions = [
@@ -821,6 +851,7 @@ def quality_score_report(
             })
         return success_response({"report": rows, "count": len(rows)})
     except Exception as e:
+        logger.error("Failed to get quality score report: %s", e, exc_info=True)
         return error_response(f"Failed to get quality score report: {e}")
 
 
@@ -840,6 +871,11 @@ def comparison_report(
     try:
         cid = resolve_customer_id(customer_id)
         service = get_service("GoogleAdsService")
+
+        validate_date(current_start)
+        validate_date(current_end)
+        validate_date(previous_start)
+        validate_date(previous_end)
 
         campaign_filter = ""
         if campaign_id:
@@ -910,4 +946,5 @@ def comparison_report(
             "deltas": deltas,
         })
     except Exception as e:
+        logger.error("Failed to generate comparison report: %s", e, exc_info=True)
         return error_response(f"Failed to generate comparison report: {e}")

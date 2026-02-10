@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from google.api_core import protobuf_helpers
@@ -14,9 +15,13 @@ from ..utils import (
     resolve_customer_id,
     success_response,
     to_micros,
+    validate_enum_value,
+    validate_limit,
     validate_numeric_id,
     validate_status,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @mcp.tool()
@@ -31,6 +36,7 @@ def list_campaigns(
     """
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
 
         where = ""
@@ -65,6 +71,7 @@ def list_campaigns(
             })
         return success_response({"campaigns": campaigns, "count": len(campaigns)})
     except Exception as e:
+        logger.error("Failed to list campaigns: %s", e, exc_info=True)
         return error_response(f"Failed to list campaigns: {e}")
 
 
@@ -118,6 +125,7 @@ def get_campaign(
             return success_response(data)
         return error_response(f"Campaign {campaign_id} not found")
     except Exception as e:
+        logger.error("Failed to get campaign: %s", e, exc_info=True)
         return error_response(f"Failed to get campaign: {e}")
 
 
@@ -162,11 +170,13 @@ def create_campaign(
         campaign.name = name
         campaign.status = client.enums.CampaignStatusEnum.PAUSED
         campaign.campaign_budget = budget_rn
+        validate_enum_value(channel_type, "channel_type")
         campaign.advertising_channel_type = getattr(
             client.enums.AdvertisingChannelTypeEnum, channel_type
         )
 
         # Bidding strategy
+        validate_enum_value(bidding_strategy, "bidding_strategy")
         if bidding_strategy == "MANUAL_CPC":
             campaign.manual_cpc.enhanced_cpc_enabled = False
         elif bidding_strategy == "MAXIMIZE_CLICKS":
@@ -194,6 +204,7 @@ def create_campaign(
             message=f"Campaign '{name}' created as PAUSED",
         )
     except Exception as e:
+        logger.error("Failed to create campaign: %s", e, exc_info=True)
         return error_response(f"Failed to create campaign: {e}")
 
 
@@ -254,6 +265,7 @@ def update_campaign(
             message=f"Campaign {campaign_id} updated",
         )
     except Exception as e:
+        logger.error("Failed to update campaign: %s", e, exc_info=True)
         return error_response(f"Failed to update campaign: {e}")
 
 
@@ -289,6 +301,7 @@ def set_campaign_status(
             message=f"Campaign {campaign_id} set to {safe_status}",
         )
     except Exception as e:
+        logger.error("Failed to set campaign status: %s", e, exc_info=True)
         return error_response(f"Failed to set campaign status: {e}")
 
 
@@ -312,6 +325,7 @@ def remove_campaign(
             message=f"Campaign {campaign_id} removed permanently",
         )
     except Exception as e:
+        logger.error("Failed to remove campaign: %s", e, exc_info=True)
         return error_response(f"Failed to remove campaign: {e}")
 
 
@@ -324,6 +338,7 @@ def list_campaign_labels(
     """List labels associated with campaigns."""
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
 
         where = ""
@@ -354,4 +369,5 @@ def list_campaign_labels(
             })
         return success_response({"labels": labels, "count": len(labels)})
     except Exception as e:
+        logger.error("Failed to list campaign labels: %s", e, exc_info=True)
         return error_response(f"Failed to list campaign labels: {e}")

@@ -2,11 +2,21 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from ..auth import get_client, get_service
 from ..coordinator import mcp
-from ..utils import error_response, resolve_customer_id, success_response, validate_enum_value, validate_numeric_id
+from ..utils import (
+    error_response,
+    resolve_customer_id,
+    success_response,
+    validate_enum_value,
+    validate_limit,
+    validate_numeric_id,
+)
+
+logger = logging.getLogger(__name__)
 
 
 @mcp.tool()
@@ -18,6 +28,7 @@ def list_audience_segments(
     """List available audience segments for targeting."""
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
         type_filter = f"WHERE audience.type = '{validate_enum_value(segment_type, 'segment_type')}'" if segment_type else ""
 
@@ -45,6 +56,7 @@ def list_audience_segments(
             })
         return success_response({"segments": segments, "count": len(segments)})
     except Exception as e:
+        logger.error("Failed to list audience segments: %s", e, exc_info=True)
         return error_response(f"Failed to list audience segments: {e}")
 
 
@@ -75,6 +87,7 @@ def add_audience_targeting(
             message=f"Audience {audience_id} added to campaign {campaign_id}",
         )
     except Exception as e:
+        logger.error("Failed to add audience targeting: %s", e, exc_info=True)
         return error_response(f"Failed to add audience targeting: {e}")
 
 
@@ -99,6 +112,7 @@ def remove_audience_targeting(
             message=f"Audience criterion {criterion_id} removed from campaign {campaign_id}",
         )
     except Exception as e:
+        logger.error("Failed to remove audience targeting: %s", e, exc_info=True)
         return error_response(f"Failed to remove audience targeting: {e}")
 
 
@@ -137,6 +151,7 @@ def suggest_geo_targets(
             })
         return success_response({"suggestions": suggestions, "count": len(suggestions)})
     except Exception as e:
+        logger.error("Failed to suggest geo targets: %s", e, exc_info=True)
         return error_response(f"Failed to suggest geo targets: {e}")
 
 
@@ -150,6 +165,7 @@ def list_campaign_targeting(
     """List all targeting criteria for a campaign (locations, languages, audiences, devices)."""
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
         type_filter = f"AND campaign_criterion.type = '{validate_enum_value(criterion_type, 'criterion_type')}'" if criterion_type else ""
 
@@ -179,6 +195,7 @@ def list_campaign_targeting(
             })
         return success_response({"criteria": criteria, "count": len(criteria)})
     except Exception as e:
+        logger.error("Failed to list campaign targeting: %s", e, exc_info=True)
         return error_response(f"Failed to list campaign targeting: {e}")
 
 
@@ -209,4 +226,5 @@ def add_audience_to_ad_group(
             message=f"Audience {audience_id} added to ad group {ad_group_id}",
         )
     except Exception as e:
+        logger.error("Failed to add audience to ad group: %s", e, exc_info=True)
         return error_response(f"Failed to add audience to ad group: {e}")

@@ -2,13 +2,24 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from google.api_core import protobuf_helpers
 
 from ..auth import get_client, get_service
 from ..coordinator import mcp
-from ..utils import error_response, resolve_customer_id, success_response, to_micros, validate_numeric_id
+from ..utils import (
+    error_response,
+    resolve_customer_id,
+    success_response,
+    to_micros,
+    validate_enum_value,
+    validate_limit,
+    validate_numeric_id,
+)
+
+logger = logging.getLogger(__name__)
 
 
 @mcp.tool()
@@ -166,6 +177,7 @@ def create_performance_max_campaign(
             message=f"Performance Max campaign '{name}' created as PAUSED with asset group",
         )
     except Exception as e:
+        logger.error("Failed to create Performance Max campaign: %s", e, exc_info=True)
         return error_response(f"Failed to create Performance Max campaign: {e}")
 
 
@@ -181,6 +193,7 @@ def list_asset_groups(
     """
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
         campaign_filter = f"WHERE campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}" if campaign_id else ""
 
@@ -211,6 +224,7 @@ def list_asset_groups(
             })
         return success_response({"asset_groups": groups, "count": len(groups)})
     except Exception as e:
+        logger.error("Failed to list asset groups: %s", e, exc_info=True)
         return error_response(f"Failed to list asset groups: {e}")
 
 
@@ -237,6 +251,7 @@ def update_asset_group(
             asset_group.name = name
             fields.append("name")
         if status is not None:
+            validate_enum_value(status, "status")
             asset_group.status = getattr(client.enums.AssetGroupStatusEnum, status)
             fields.append("status")
         if final_url is not None:
@@ -257,6 +272,7 @@ def update_asset_group(
             message=f"Asset group {asset_group_id} updated",
         )
     except Exception as e:
+        logger.error("Failed to update asset group: %s", e, exc_info=True)
         return error_response(f"Failed to update asset group: {e}")
 
 
@@ -311,6 +327,7 @@ def create_display_campaign(
             message=f"Display campaign '{name}' created as PAUSED",
         )
     except Exception as e:
+        logger.error("Failed to create Display campaign: %s", e, exc_info=True)
         return error_response(f"Failed to create Display campaign: {e}")
 
 
@@ -362,6 +379,7 @@ def create_video_campaign(
             message=f"Video campaign '{name}' created as PAUSED",
         )
     except Exception as e:
+        logger.error("Failed to create Video campaign: %s", e, exc_info=True)
         return error_response(f"Failed to create Video campaign: {e}")
 
 
@@ -421,6 +439,7 @@ def create_shopping_campaign(
             message=f"Shopping campaign '{name}' created as PAUSED",
         )
     except Exception as e:
+        logger.error("Failed to create Shopping campaign: %s", e, exc_info=True)
         return error_response(f"Failed to create Shopping campaign: {e}")
 
 
@@ -474,6 +493,7 @@ def create_demand_gen_campaign(
             message=f"Demand Gen campaign '{name}' created as PAUSED",
         )
     except Exception as e:
+        logger.error("Failed to create Demand Gen campaign: %s", e, exc_info=True)
         return error_response(f"Failed to create Demand Gen campaign: {e}")
 
 
@@ -514,6 +534,7 @@ def create_app_campaign(
         campaign.advertising_channel_sub_type = client.enums.AdvertisingChannelSubTypeEnum.APP_CAMPAIGN
 
         campaign.app_campaign_setting.app_id = app_id
+        validate_enum_value(app_store, "app_store")
         campaign.app_campaign_setting.app_store = getattr(
             client.enums.AppCampaignAppStoreEnum, app_store
         )
@@ -532,4 +553,5 @@ def create_app_campaign(
             message=f"App campaign '{name}' created as PAUSED",
         )
     except Exception as e:
+        logger.error("Failed to create App campaign: %s", e, exc_info=True)
         return error_response(f"Failed to create App campaign: {e}")

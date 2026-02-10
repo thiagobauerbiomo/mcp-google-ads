@@ -55,7 +55,7 @@ def format_micros(micros: int | None) -> float | None:
     """Convert micros to standard currency unit."""
     if micros is None:
         return None
-    return micros / 1_000_000
+    return round(micros / 1_000_000, 2)
 
 
 def to_micros(amount: float) -> int:

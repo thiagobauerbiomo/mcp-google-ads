@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -11,6 +11,7 @@ from mcp_google_ads.utils import (
     build_date_clause,
     error_response,
     format_micros,
+    proto_to_dict,
     resolve_customer_id,
     success_response,
     to_micros,
@@ -215,3 +216,49 @@ class TestValidateLimit:
         assert validate_limit(500, max_limit=500) == 500
         with pytest.raises(Exception, match="limit deve ser entre"):
             validate_limit(501, max_limit=500)
+
+
+class TestProtoToDict:
+    @patch("mcp_google_ads.utils.MessageToDict")
+    def test_with_pb_attribute(self, mock_message_to_dict):
+        """Proto wrapper com atributo _pb usa o _pb interno."""
+        mock_message_to_dict.return_value = {"name": "campaigns/123"}
+        proto_wrapper = MagicMock()
+        proto_wrapper._pb = MagicMock()
+
+        result = proto_to_dict(proto_wrapper)
+
+        mock_message_to_dict.assert_called_once_with(
+            proto_wrapper._pb,
+            preserving_proto_field_name=True,
+            including_default_value_fields=False,
+        )
+        assert result == {"name": "campaigns/123"}
+
+    @patch("mcp_google_ads.utils.MessageToDict")
+    def test_raw_protobuf_without_pb(self, mock_message_to_dict):
+        """Protobuf puro (sem _pb) é passado diretamente ao MessageToDict."""
+        mock_message_to_dict.return_value = {"id": 456}
+        raw_proto = MagicMock(spec=[])  # spec=[] garante que não tem _pb
+
+        result = proto_to_dict(raw_proto)
+
+        mock_message_to_dict.assert_called_once_with(
+            raw_proto,
+            preserving_proto_field_name=True,
+            including_default_value_fields=False,
+        )
+        assert result == {"id": 456}
+
+    @patch("mcp_google_ads.utils.MessageToDict")
+    def test_exception_returns_raw_fallback(self, mock_message_to_dict):
+        """Quando MessageToDict lança exceção, retorna fallback com str()."""
+        mock_message_to_dict.side_effect = TypeError("not a valid protobuf")
+
+        class BadProto:
+            def __str__(self):
+                return "BadObject(data=123)"
+
+        result = proto_to_dict(BadProto())
+
+        assert result == {"raw": "BadObject(data=123)"}

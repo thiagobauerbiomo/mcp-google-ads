@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
-from ..auth import get_client, get_service
+from ..auth import get_service
 from ..coordinator import mcp
-from ..utils import error_response, proto_to_dict, resolve_customer_id, success_response
+from ..utils import error_response, resolve_customer_id, success_response
+
+logger = logging.getLogger(__name__)
 
 
 @mcp.tool()
@@ -25,6 +28,7 @@ def list_accessible_customers() -> str:
             message="Accessible customers retrieved",
         )
     except Exception as e:
+        logger.error("Failed to list accessible customers: %s", e, exc_info=True)
         return error_response(f"Failed to list accessible customers: {e}")
 
 
@@ -67,6 +71,7 @@ def get_customer_info(
             return success_response(data)
         return error_response("No customer data found")
     except Exception as e:
+        logger.error("Failed to get customer info: %s", e, exc_info=True)
         return error_response(f"Failed to get customer info: {e}")
 
 
@@ -109,6 +114,7 @@ def get_account_hierarchy(
             })
         return success_response({"accounts": accounts, "count": len(accounts)})
     except Exception as e:
+        logger.error("Failed to get account hierarchy: %s", e, exc_info=True)
         return error_response(f"Failed to get account hierarchy: {e}")
 
 
@@ -145,4 +151,5 @@ def list_customer_clients(
             })
         return success_response({"clients": clients, "count": len(clients)})
     except Exception as e:
+        logger.error("Failed to list customer clients: %s", e, exc_info=True)
         return error_response(f"Failed to list customer clients: {e}")

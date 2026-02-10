@@ -2,13 +2,26 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from google.api_core import protobuf_helpers
 
 from ..auth import get_client, get_service
 from ..coordinator import mcp
-from ..utils import error_response, format_micros, resolve_customer_id, success_response, to_micros, validate_numeric_id, validate_status
+from ..utils import (
+    error_response,
+    format_micros,
+    resolve_customer_id,
+    success_response,
+    to_micros,
+    validate_enum_value,
+    validate_limit,
+    validate_numeric_id,
+    validate_status,
+)
+
+logger = logging.getLogger(__name__)
 
 
 @mcp.tool()
@@ -21,6 +34,7 @@ def list_ad_groups(
     """List ad groups, optionally filtered by campaign and/or status."""
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
         conditions = []
         if campaign_id:
@@ -58,6 +72,7 @@ def list_ad_groups(
             })
         return success_response({"ad_groups": groups, "count": len(groups)})
     except Exception as e:
+        logger.error("Failed to list ad groups: %s", e, exc_info=True)
         return error_response(f"Failed to list ad groups: {e}")
 
 
@@ -104,6 +119,7 @@ def get_ad_group(
             return success_response(data)
         return error_response(f"Ad group {ad_group_id} not found")
     except Exception as e:
+        logger.error("Failed to get ad group: %s", e, exc_info=True)
         return error_response(f"Failed to get ad group: {e}")
 
 
@@ -126,6 +142,7 @@ def create_ad_group(
         ad_group.name = name
         ad_group.status = client.enums.AdGroupStatusEnum.PAUSED
         ad_group.campaign = f"customers/{cid}/campaigns/{campaign_id}"
+        validate_enum_value(ad_group_type, "ad_group_type")
         ad_group.type_ = getattr(client.enums.AdGroupTypeEnum, ad_group_type)
 
         if cpc_bid is not None:
@@ -140,6 +157,7 @@ def create_ad_group(
             message=f"Ad group '{name}' created as PAUSED",
         )
     except Exception as e:
+        logger.error("Failed to create ad group: %s", e, exc_info=True)
         return error_response(f"Failed to create ad group: {e}")
 
 
@@ -186,6 +204,7 @@ def update_ad_group(
             message=f"Ad group {ad_group_id} updated",
         )
     except Exception as e:
+        logger.error("Failed to update ad group: %s", e, exc_info=True)
         return error_response(f"Failed to update ad group: {e}")
 
 
@@ -204,6 +223,7 @@ def set_ad_group_status(
         operation = client.get_type("AdGroupOperation")
         ad_group = operation.update
         ad_group.resource_name = f"customers/{cid}/adGroups/{ad_group_id}"
+        validate_enum_value(status, "status")
         ad_group.status = getattr(client.enums.AdGroupStatusEnum, status)
 
         client.copy_from(
@@ -217,6 +237,7 @@ def set_ad_group_status(
             message=f"Ad group {ad_group_id} set to {status}",
         )
     except Exception as e:
+        logger.error("Failed to set ad group status: %s", e, exc_info=True)
         return error_response(f"Failed to set ad group status: {e}")
 
 
@@ -240,4 +261,5 @@ def remove_ad_group(
             message=f"Ad group {ad_group_id} removed",
         )
     except Exception as e:
+        logger.error("Failed to remove ad group: %s", e, exc_info=True)
         return error_response(f"Failed to remove ad group: {e}")

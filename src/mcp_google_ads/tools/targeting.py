@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
-
-from google.api_core import protobuf_helpers
 
 from ..auth import get_client, get_service
 from ..coordinator import mcp
-from ..utils import error_response, resolve_customer_id, success_response, validate_numeric_id
+from ..utils import error_response, resolve_customer_id, success_response, validate_enum_value, validate_numeric_id
+
+logger = logging.getLogger(__name__)
 
 
 @mcp.tool()
@@ -30,6 +31,7 @@ def set_device_bid_adjustment(
         operation = client.get_type("CampaignCriterionOperation")
         criterion = operation.create
         criterion.campaign = f"customers/{cid}/campaigns/{campaign_id}"
+        validate_enum_value(device_type, "device_type")
         criterion.device.type_ = getattr(client.enums.DeviceEnum, device_type)
         criterion.bid_modifier = bid_modifier
 
@@ -39,6 +41,7 @@ def set_device_bid_adjustment(
             message=f"Device {device_type} bid modifier set to {bid_modifier} on campaign {campaign_id}",
         )
     except Exception as e:
+        logger.error("Failed to set device bid adjustment: %s", e, exc_info=True)
         return error_response(f"Failed to set device bid adjustment: {e}")
 
 
@@ -65,10 +68,13 @@ def create_ad_schedule(
         operation = client.get_type("CampaignCriterionOperation")
         criterion = operation.create
         criterion.campaign = f"customers/{cid}/campaigns/{campaign_id}"
+        validate_enum_value(day_of_week, "day_of_week")
         criterion.ad_schedule.day_of_week = getattr(client.enums.DayOfWeekEnum, day_of_week)
         criterion.ad_schedule.start_hour = start_hour
         criterion.ad_schedule.end_hour = end_hour
+        validate_enum_value(start_minute, "start_minute")
         criterion.ad_schedule.start_minute = getattr(client.enums.MinuteOfHourEnum, start_minute)
+        validate_enum_value(end_minute, "end_minute")
         criterion.ad_schedule.end_minute = getattr(client.enums.MinuteOfHourEnum, end_minute)
 
         if bid_modifier is not None:
@@ -80,6 +86,7 @@ def create_ad_schedule(
             message=f"Ad schedule created: {day_of_week} {start_hour}:00-{end_hour}:00",
         )
     except Exception as e:
+        logger.error("Failed to create ad schedule: %s", e, exc_info=True)
         return error_response(f"Failed to create ad schedule: {e}")
 
 
@@ -120,6 +127,7 @@ def list_ad_schedules(
             })
         return success_response({"schedules": schedules, "count": len(schedules)})
     except Exception as e:
+        logger.error("Failed to list ad schedules: %s", e, exc_info=True)
         return error_response(f"Failed to list ad schedules: {e}")
 
 
@@ -144,6 +152,7 @@ def remove_ad_schedule(
             message=f"Ad schedule {criterion_id} removed from campaign {campaign_id}",
         )
     except Exception as e:
+        logger.error("Failed to remove ad schedule: %s", e, exc_info=True)
         return error_response(f"Failed to remove ad schedule: {e}")
 
 
@@ -174,6 +183,7 @@ def exclude_geo_location(
             message=f"Geo location {geo_target_id} excluded from campaign {campaign_id}",
         )
     except Exception as e:
+        logger.error("Failed to exclude geo location: %s", e, exc_info=True)
         return error_response(f"Failed to exclude geo location: {e}")
 
 
@@ -200,6 +210,7 @@ def add_language_targeting(
             message=f"Language {language_id} targeting added to campaign {campaign_id}",
         )
     except Exception as e:
+        logger.error("Failed to add language targeting: %s", e, exc_info=True)
         return error_response(f"Failed to add language targeting: {e}")
 
 
@@ -224,4 +235,5 @@ def remove_language_targeting(
             message=f"Language targeting {criterion_id} removed from campaign {campaign_id}",
         )
     except Exception as e:
+        logger.error("Failed to remove language targeting: %s", e, exc_info=True)
         return error_response(f"Failed to remove language targeting: {e}")

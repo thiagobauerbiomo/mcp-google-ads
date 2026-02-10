@@ -2,13 +2,25 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from google.api_core import protobuf_helpers
 
 from ..auth import get_client, get_service
 from ..coordinator import mcp
-from ..utils import error_response, format_micros, resolve_customer_id, success_response, to_micros, validate_numeric_id
+from ..utils import (
+    error_response,
+    format_micros,
+    resolve_customer_id,
+    success_response,
+    to_micros,
+    validate_enum_value,
+    validate_limit,
+    validate_numeric_id,
+)
+
+logger = logging.getLogger(__name__)
 
 
 @mcp.tool()
@@ -19,6 +31,7 @@ def list_budgets(
     """List all campaign budgets for an account."""
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
         query = f"""
             SELECT
@@ -48,6 +61,7 @@ def list_budgets(
             })
         return success_response({"budgets": budgets, "count": len(budgets)})
     except Exception as e:
+        logger.error("Failed to list budgets: %s", e, exc_info=True)
         return error_response(f"Failed to list budgets: {e}")
 
 
@@ -94,6 +108,7 @@ def get_budget(
             return success_response(data)
         return error_response(f"Budget {budget_id} not found")
     except Exception as e:
+        logger.error("Failed to get budget: %s", e, exc_info=True)
         return error_response(f"Failed to get budget: {e}")
 
 
@@ -115,6 +130,7 @@ def create_budget(
         budget = operation.create
         budget.name = name
         budget.amount_micros = to_micros(amount)
+        validate_enum_value(delivery_method, "delivery_method")
         budget.delivery_method = getattr(
             client.enums.BudgetDeliveryMethodEnum, delivery_method
         )
@@ -129,6 +145,7 @@ def create_budget(
             message=f"Budget '{name}' created ({amount} daily)",
         )
     except Exception as e:
+        logger.error("Failed to create budget: %s", e, exc_info=True)
         return error_response(f"Failed to create budget: {e}")
 
 
@@ -158,6 +175,7 @@ def update_budget(
             budget.name = name
             fields.append("name")
         if delivery_method is not None:
+            validate_enum_value(delivery_method, "delivery_method")
             budget.delivery_method = getattr(
                 client.enums.BudgetDeliveryMethodEnum, delivery_method
             )
@@ -177,4 +195,5 @@ def update_budget(
             message=f"Budget {budget_id} updated",
         )
     except Exception as e:
+        logger.error("Failed to update budget: %s", e, exc_info=True)
         return error_response(f"Failed to update budget: {e}")

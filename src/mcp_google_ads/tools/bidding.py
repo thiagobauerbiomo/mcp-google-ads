@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from google.api_core import protobuf_helpers
 
 from ..auth import get_client, get_service
 from ..coordinator import mcp
-from ..utils import error_response, resolve_customer_id, success_response, validate_numeric_id
+from ..utils import error_response, resolve_customer_id, success_response, validate_limit, validate_numeric_id
+
+logger = logging.getLogger(__name__)
 
 
 @mcp.tool()
@@ -19,6 +22,7 @@ def list_bidding_strategies(
     """List all portfolio bidding strategies for an account."""
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
         query = f"""
             SELECT
@@ -45,6 +49,7 @@ def list_bidding_strategies(
             })
         return success_response({"strategies": strategies, "count": len(strategies)})
     except Exception as e:
+        logger.error("Failed to list bidding strategies: %s", e, exc_info=True)
         return error_response(f"Failed to list bidding strategies: {e}")
 
 
@@ -102,6 +107,7 @@ def get_bidding_strategy(
             return success_response(data)
         return error_response(f"Bidding strategy {strategy_id} not found")
     except Exception as e:
+        logger.error("Failed to get bidding strategy: %s", e, exc_info=True)
         return error_response(f"Failed to get bidding strategy: {e}")
 
 
@@ -154,6 +160,7 @@ def create_bidding_strategy(
             message=f"Bidding strategy '{name}' ({strategy_type}) created",
         )
     except Exception as e:
+        logger.error("Failed to create bidding strategy: %s", e, exc_info=True)
         return error_response(f"Failed to create bidding strategy: {e}")
 
 
@@ -204,6 +211,7 @@ def update_bidding_strategy(
             message=f"Bidding strategy {strategy_id} updated",
         )
     except Exception as e:
+        logger.error("Failed to update bidding strategy: %s", e, exc_info=True)
         return error_response(f"Failed to update bidding strategy: {e}")
 
 
@@ -235,4 +243,5 @@ def set_campaign_bidding_strategy(
             message=f"Campaign {campaign_id} assigned to bidding strategy {strategy_id}",
         )
     except Exception as e:
+        logger.error("Failed to set campaign bidding strategy: %s", e, exc_info=True)
         return error_response(f"Failed to set campaign bidding strategy: {e}")

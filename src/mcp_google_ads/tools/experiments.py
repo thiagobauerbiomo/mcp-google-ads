@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from ..auth import get_client, get_service
 from ..coordinator import mcp
-from ..utils import error_response, resolve_customer_id, success_response, validate_numeric_id
+from ..utils import error_response, resolve_customer_id, success_response, validate_limit, validate_numeric_id
+
+logger = logging.getLogger(__name__)
 
 
 @mcp.tool()
@@ -20,6 +23,7 @@ def list_experiments(
     """
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
 
         query = f"""
@@ -48,6 +52,7 @@ def list_experiments(
             })
         return success_response({"experiments": experiments, "count": len(experiments)})
     except Exception as e:
+        logger.error("Failed to list experiments: %s", e, exc_info=True)
         return error_response(f"Failed to list experiments: {e}")
 
 
@@ -76,7 +81,7 @@ def create_experiment(
         experiment.name = name
         experiment.type_ = client.enums.ExperimentTypeEnum.SEARCH_CUSTOM
         experiment.status = client.enums.ExperimentStatusEnum.SETUP
-        experiment.suffix = f" [Experiment]"
+        experiment.suffix = " [Experiment]"
 
         if description:
             experiment.description = description
@@ -125,6 +130,7 @@ def create_experiment(
             message=f"Experiment '{name}' created and scheduled",
         )
     except Exception as e:
+        logger.error("Failed to create experiment: %s", e, exc_info=True)
         return error_response(f"Failed to create experiment: {e}")
 
 
@@ -191,6 +197,7 @@ def get_experiment(
         experiment_data["arms"] = arms
         return success_response(experiment_data)
     except Exception as e:
+        logger.error("Failed to get experiment: %s", e, exc_info=True)
         return error_response(f"Failed to get experiment: {e}")
 
 
@@ -216,6 +223,7 @@ def promote_experiment(
             message=f"Experiment {experiment_id} promoted — changes applied to base campaign",
         )
     except Exception as e:
+        logger.error("Failed to promote experiment: %s", e, exc_info=True)
         return error_response(f"Failed to promote experiment: {e}")
 
 
@@ -241,4 +249,5 @@ def end_experiment(
             message=f"Experiment {experiment_id} ended — no changes applied",
         )
     except Exception as e:
+        logger.error("Failed to end experiment: %s", e, exc_info=True)
         return error_response(f"Failed to end experiment: {e}")

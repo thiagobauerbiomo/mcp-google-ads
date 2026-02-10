@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 
 from . import __version__
@@ -35,8 +36,9 @@ from .tools import (  # noqa: F401
 
 def main() -> None:
     """Run the MCP server."""
+    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
     logging.basicConfig(
-        level=logging.INFO,
+        level=getattr(logging, log_level, logging.INFO),
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         stream=sys.stderr,
     )

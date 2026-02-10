@@ -2,13 +2,24 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from google.api_core import protobuf_helpers
 
 from ..auth import get_client, get_service
 from ..coordinator import mcp
-from ..utils import error_response, format_micros, resolve_customer_id, success_response, validate_numeric_id, validate_status
+from ..utils import (
+    error_response,
+    resolve_customer_id,
+    success_response,
+    validate_enum_value,
+    validate_limit,
+    validate_numeric_id,
+    validate_status,
+)
+
+logger = logging.getLogger(__name__)
 
 
 @mcp.tool()
@@ -23,6 +34,7 @@ def list_conversion_actions(
     """
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
         status_clause = f"WHERE conversion_action.status = '{validate_status(status_filter)}'" if status_filter else ""
 
@@ -62,6 +74,7 @@ def list_conversion_actions(
             })
         return success_response({"conversion_actions": actions, "count": len(actions)})
     except Exception as e:
+        logger.error("Failed to list conversion actions: %s", e, exc_info=True)
         return error_response(f"Failed to list conversion actions: {e}")
 
 
@@ -112,6 +125,7 @@ def get_conversion_action(
             return success_response(data)
         return error_response(f"Conversion action {conversion_action_id} not found")
     except Exception as e:
+        logger.error("Failed to get conversion action: %s", e, exc_info=True)
         return error_response(f"Failed to get conversion action: {e}")
 
 
@@ -136,8 +150,11 @@ def create_conversion_action(
         operation = client.get_type("ConversionActionOperation")
         conversion_action = operation.create
         conversion_action.name = name
+        validate_enum_value(action_type, "action_type")
         conversion_action.type_ = getattr(client.enums.ConversionActionTypeEnum, action_type)
+        validate_enum_value(category, "category")
         conversion_action.category = getattr(client.enums.ConversionActionCategoryEnum, category)
+        validate_enum_value(counting_type, "counting_type")
         conversion_action.counting_type = getattr(client.enums.ConversionActionCountingTypeEnum, counting_type)
         conversion_action.status = client.enums.ConversionActionStatusEnum.ENABLED
 
@@ -154,6 +171,7 @@ def create_conversion_action(
             message=f"Conversion action '{name}' created",
         )
     except Exception as e:
+        logger.error("Failed to create conversion action: %s", e, exc_info=True)
         return error_response(f"Failed to create conversion action: {e}")
 
 
@@ -181,12 +199,14 @@ def update_conversion_action(
             conversion_action.name = name
             fields.append("name")
         if status is not None:
+            validate_enum_value(status, "status")
             conversion_action.status = getattr(client.enums.ConversionActionStatusEnum, status)
             fields.append("status")
         if default_value is not None:
             conversion_action.value_settings.default_value = default_value
             fields.append("value_settings.default_value")
         if counting_type is not None:
+            validate_enum_value(counting_type, "counting_type")
             conversion_action.counting_type = getattr(client.enums.ConversionActionCountingTypeEnum, counting_type)
             fields.append("counting_type")
 
@@ -204,6 +224,7 @@ def update_conversion_action(
             message=f"Conversion action {conversion_action_id} updated",
         )
     except Exception as e:
+        logger.error("Failed to update conversion action: %s", e, exc_info=True)
         return error_response(f"Failed to update conversion action: {e}")
 
 
@@ -267,6 +288,7 @@ def import_offline_conversions(
             message=f"{len(results)} offline conversions uploaded",
         )
     except Exception as e:
+        logger.error("Failed to import offline conversions: %s", e, exc_info=True)
         return error_response(f"Failed to import offline conversions: {e}")
 
 
@@ -281,6 +303,7 @@ def list_conversion_goals(
     """
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
 
         query = f"""
@@ -301,4 +324,5 @@ def list_conversion_goals(
             })
         return success_response({"conversion_goals": goals, "count": len(goals)})
     except Exception as e:
+        logger.error("Failed to list conversion goals: %s", e, exc_info=True)
         return error_response(f"Failed to list conversion goals: {e}")

@@ -2,13 +2,26 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from google.api_core import protobuf_helpers
 
 from ..auth import get_client, get_service
 from ..coordinator import mcp
-from ..utils import error_response, format_micros, resolve_customer_id, success_response, to_micros, validate_numeric_id, validate_status
+from ..utils import (
+    error_response,
+    format_micros,
+    resolve_customer_id,
+    success_response,
+    to_micros,
+    validate_enum_value,
+    validate_limit,
+    validate_numeric_id,
+    validate_status,
+)
+
+logger = logging.getLogger(__name__)
 
 
 @mcp.tool()
@@ -22,6 +35,7 @@ def list_keywords(
     """List keywords with their match type, bid, quality score, and status."""
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
         conditions = ["ad_group_criterion.type = 'KEYWORD'"]
         if ad_group_id:
@@ -65,6 +79,7 @@ def list_keywords(
             })
         return success_response({"keywords": keywords, "count": len(keywords)})
     except Exception as e:
+        logger.error("Failed to list keywords: %s", e, exc_info=True)
         return error_response(f"Failed to list keywords: {e}")
 
 
@@ -107,8 +122,10 @@ def add_keywords(
             criterion.ad_group = f"customers/{cid}/adGroups/{ad_group_id}"
             criterion.status = client.enums.AdGroupCriterionStatusEnum.ENABLED
             criterion.keyword.text = kw["text"]
+            match = kw.get("match_type", "BROAD")
+            validate_enum_value(match, "match_type")
             criterion.keyword.match_type = getattr(
-                client.enums.KeywordMatchTypeEnum, kw.get("match_type", "BROAD")
+                client.enums.KeywordMatchTypeEnum, match
             )
             if cpc_bid is not None:
                 criterion.cpc_bid_micros = to_micros(cpc_bid)
@@ -122,6 +139,7 @@ def add_keywords(
             message=f"{len(results)} keywords added to ad group {ad_group_id}",
         )
     except Exception as e:
+        logger.error("Failed to add keywords: %s", e, exc_info=True)
         return error_response(f"Failed to add keywords: {e}")
 
 
@@ -149,6 +167,7 @@ def update_keyword(
             criterion.cpc_bid_micros = to_micros(cpc_bid)
             fields.append("cpc_bid_micros")
         if status is not None:
+            validate_enum_value(status, "status")
             criterion.status = getattr(client.enums.AdGroupCriterionStatusEnum, status)
             fields.append("status")
         if final_url is not None:
@@ -169,6 +188,7 @@ def update_keyword(
             message=f"Keyword {criterion_id} updated",
         )
     except Exception as e:
+        logger.error("Failed to update keyword: %s", e, exc_info=True)
         return error_response(f"Failed to update keyword: {e}")
 
 
@@ -200,6 +220,7 @@ def remove_keywords(
             message=f"{len(response.results)} keywords removed",
         )
     except Exception as e:
+        logger.error("Failed to remove keywords: %s", e, exc_info=True)
         return error_response(f"Failed to remove keywords: {e}")
 
 
@@ -238,8 +259,10 @@ def add_negative_keywords_to_campaign(
             criterion.campaign = f"customers/{cid}/campaigns/{campaign_id}"
             criterion.negative = True
             criterion.keyword.text = kw["text"]
+            match = kw.get("match_type", "BROAD")
+            validate_enum_value(match, "match_type")
             criterion.keyword.match_type = getattr(
-                client.enums.KeywordMatchTypeEnum, kw.get("match_type", "BROAD")
+                client.enums.KeywordMatchTypeEnum, match
             )
             operations.append(operation)
 
@@ -249,6 +272,7 @@ def add_negative_keywords_to_campaign(
             message=f"{len(response.results)} negative keywords added to campaign {campaign_id}",
         )
     except Exception as e:
+        logger.error("Failed to add negative keywords: %s", e, exc_info=True)
         return error_response(f"Failed to add negative keywords: {e}")
 
 
@@ -277,6 +301,7 @@ def add_negative_keywords_to_shared_set(
             criterion = operation.create
             criterion.shared_set = f"customers/{cid}/sharedSets/{shared_set_id}"
             criterion.keyword.text = kw_text
+            validate_enum_value(match_type, "match_type")
             criterion.keyword.match_type = getattr(
                 client.enums.KeywordMatchTypeEnum, match_type
             )
@@ -288,6 +313,7 @@ def add_negative_keywords_to_shared_set(
             message=f"{len(response.results)} negatives added to shared set {shared_set_id}",
         )
     except Exception as e:
+        logger.error("Failed to add to shared set: %s", e, exc_info=True)
         return error_response(f"Failed to add to shared set: {e}")
 
 
@@ -340,6 +366,7 @@ def generate_keyword_ideas(
             count += 1
         return success_response({"ideas": ideas, "count": len(ideas)})
     except Exception as e:
+        logger.error("Failed to generate keyword ideas: %s", e, exc_info=True)
         return error_response(f"Failed to generate keyword ideas: {e}")
 
 
@@ -370,6 +397,7 @@ def get_keyword_forecast(
             ad_group = client.get_type("KeywordForecastAdGroup")
             biddable_keyword = client.get_type("BiddableKeyword")
             biddable_keyword.keyword.text = kw_text
+            validate_enum_value(match_type, "match_type")
             biddable_keyword.keyword.match_type = getattr(
                 client.enums.KeywordMatchTypeEnum, match_type
             )
@@ -392,6 +420,7 @@ def get_keyword_forecast(
 
         return success_response({"forecasts": forecasts})
     except Exception as e:
+        logger.error("Failed to get keyword forecast: %s", e, exc_info=True)
         return error_response(f"Failed to get keyword forecast: {e}")
 
 
@@ -407,6 +436,7 @@ def list_negative_keywords(
     """
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
 
         conditions = ["campaign_criterion.negative = true", "campaign_criterion.type = 'KEYWORD'"]
@@ -439,4 +469,5 @@ def list_negative_keywords(
             })
         return success_response({"negative_keywords": negatives, "count": len(negatives)})
     except Exception as e:
+        logger.error("Failed to list negative keywords: %s", e, exc_info=True)
         return error_response(f"Failed to list negative keywords: {e}")

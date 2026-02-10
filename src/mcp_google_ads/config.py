@@ -38,7 +38,7 @@ def load_config() -> GoogleAdsConfig:
     config = GoogleAdsConfig()
     missing = config.validate()
     if missing:
-        raise EnvironmentError(
+        raise OSError(
             f"Missing required environment variables: {', '.join(missing)}"
         )
     return config

@@ -42,7 +42,7 @@ class TestListRecommendations:
         mock_service.search.return_value = []
         mock_get_service.return_value = mock_service
 
-        result = assert_success(list_recommendations("123", recommendation_type="KEYWORD"))
+        assert_success(list_recommendations("123", recommendation_type="KEYWORD"))
         call_query = mock_service.search.call_args[1]["query"]
         assert "KEYWORD" in call_query
 

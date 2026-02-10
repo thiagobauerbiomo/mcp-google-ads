@@ -53,7 +53,7 @@ class TestGoogleAdsConfig:
             refresh_token="refresh",
             login_customer_id="123",
         )
-        with pytest.raises(Exception):
+        with pytest.raises(AttributeError):
             config.client_id = "new"  # type: ignore[misc]
 
 

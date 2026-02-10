@@ -2,11 +2,21 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from ..auth import get_client, get_service
 from ..coordinator import mcp
-from ..utils import error_response, format_micros, resolve_customer_id, success_response, validate_enum_value
+from ..utils import (
+    error_response,
+    format_micros,
+    resolve_customer_id,
+    success_response,
+    validate_enum_value,
+    validate_limit,
+)
+
+logger = logging.getLogger(__name__)
 
 
 @mcp.tool()
@@ -21,6 +31,7 @@ def list_recommendations(
     """
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
         type_filter = f"WHERE recommendation.type = '{validate_enum_value(recommendation_type, 'recommendation_type')}'" if recommendation_type else ""
 
@@ -61,6 +72,7 @@ def list_recommendations(
 
         return success_response({"recommendations": recommendations, "count": len(recommendations)})
     except Exception as e:
+        logger.error("Failed to list recommendations: %s", e, exc_info=True)
         return error_response(f"Failed to list recommendations: {e}")
 
 
@@ -110,6 +122,7 @@ def get_recommendation(
             return success_response(data)
         return error_response(f"Recommendation {recommendation_id} not found")
     except Exception as e:
+        logger.error("Failed to get recommendation: %s", e, exc_info=True)
         return error_response(f"Failed to get recommendation: {e}")
 
 
@@ -139,6 +152,7 @@ def apply_recommendation(
             message="Recommendation applied successfully",
         )
     except Exception as e:
+        logger.error("Failed to apply recommendation: %s", e, exc_info=True)
         return error_response(f"Failed to apply recommendation: {e}")
 
 
@@ -165,6 +179,7 @@ def dismiss_recommendation(
             message="Recommendation dismissed",
         )
     except Exception as e:
+        logger.error("Failed to dismiss recommendation: %s", e, exc_info=True)
         return error_response(f"Failed to dismiss recommendation: {e}")
 
 
@@ -196,4 +211,5 @@ def get_optimization_score(
             })
         return error_response("Could not retrieve optimization score")
     except Exception as e:
+        logger.error("Failed to get optimization score: %s", e, exc_info=True)
         return error_response(f"Failed to get optimization score: {e}")

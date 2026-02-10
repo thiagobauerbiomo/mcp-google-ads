@@ -39,7 +39,7 @@ class TestListAssets:
         mock_service.search.return_value = []
         mock_get_service.return_value = mock_service
 
-        result = assert_success(list_assets("123", asset_type="CALLOUT"))
+        assert_success(list_assets("123", asset_type="CALLOUT"))
         call_query = mock_service.search.call_args[1]["query"]
         assert "CALLOUT" in call_query
 

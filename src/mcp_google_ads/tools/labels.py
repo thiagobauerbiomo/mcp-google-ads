@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from ..auth import get_client, get_service
 from ..coordinator import mcp
-from ..utils import error_response, resolve_customer_id, success_response
+from ..utils import error_response, resolve_customer_id, success_response, validate_limit
+
+logger = logging.getLogger(__name__)
 
 
 @mcp.tool()
@@ -20,6 +23,7 @@ def list_labels(
     """
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
         query = f"""
             SELECT
@@ -45,6 +49,7 @@ def list_labels(
             })
         return success_response({"labels": labels, "count": len(labels)})
     except Exception as e:
+        logger.error("Failed to list labels: %s", e, exc_info=True)
         return error_response(f"Failed to list labels: {e}")
 
 
@@ -78,6 +83,7 @@ def create_label(
             message=f"Label '{name}' created",
         )
     except Exception as e:
+        logger.error("Failed to create label: %s", e, exc_info=True)
         return error_response(f"Failed to create label: {e}")
 
 
@@ -101,6 +107,7 @@ def remove_label(
             message=f"Label {label_id} removed",
         )
     except Exception as e:
+        logger.error("Failed to remove label: %s", e, exc_info=True)
         return error_response(f"Failed to remove label: {e}")
 
 
@@ -127,6 +134,7 @@ def apply_label_to_campaign(
             message=f"Label {label_id} applied to campaign {campaign_id}",
         )
     except Exception as e:
+        logger.error("Failed to apply label to campaign: %s", e, exc_info=True)
         return error_response(f"Failed to apply label to campaign: {e}")
 
 
@@ -153,6 +161,7 @@ def apply_label_to_ad_group(
             message=f"Label {label_id} applied to ad group {ad_group_id}",
         )
     except Exception as e:
+        logger.error("Failed to apply label to ad group: %s", e, exc_info=True)
         return error_response(f"Failed to apply label to ad group: {e}")
 
 
@@ -180,6 +189,7 @@ def apply_label_to_ad(
             message=f"Label {label_id} applied to ad {ad_id}",
         )
     except Exception as e:
+        logger.error("Failed to apply label to ad: %s", e, exc_info=True)
         return error_response(f"Failed to apply label to ad: {e}")
 
 
@@ -207,6 +217,7 @@ def apply_label_to_keyword(
             message=f"Label {label_id} applied to keyword {criterion_id}",
         )
     except Exception as e:
+        logger.error("Failed to apply label to keyword: %s", e, exc_info=True)
         return error_response(f"Failed to apply label to keyword: {e}")
 
 
@@ -246,4 +257,5 @@ def remove_label_from_resource(
             message=f"Label removed from {resource_type}",
         )
     except Exception as e:
+        logger.error("Failed to remove label from %s: %s", resource_type, e, exc_info=True)
         return error_response(f"Failed to remove label from {resource_type}: {e}")

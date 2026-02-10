@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from ..auth import get_service
 from ..coordinator import mcp
-from ..utils import error_response, format_micros, resolve_customer_id, success_response
+from ..utils import error_response, resolve_customer_id, success_response, validate_limit
+
+logger = logging.getLogger(__name__)
 
 
 @mcp.tool()
@@ -20,6 +23,7 @@ def list_account_links(
     """
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
 
         query = f"""
@@ -40,6 +44,7 @@ def list_account_links(
             })
         return success_response({"account_links": links, "count": len(links)})
     except Exception as e:
+        logger.error("Failed to list account links: %s", e, exc_info=True)
         return error_response(f"Failed to list account links: {e}")
 
 
@@ -81,6 +86,7 @@ def get_billing_info(
             })
         return success_response({"billing_setups": setups, "count": len(setups)})
     except Exception as e:
+        logger.error("Failed to get billing info: %s", e, exc_info=True)
         return error_response(f"Failed to get billing info: {e}")
 
 
@@ -95,6 +101,7 @@ def list_account_users(
     """
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
 
         query = f"""
@@ -119,4 +126,5 @@ def list_account_users(
             })
         return success_response({"users": users, "count": len(users)})
     except Exception as e:
+        logger.error("Failed to list account users: %s", e, exc_info=True)
         return error_response(f"Failed to list account users: {e}")

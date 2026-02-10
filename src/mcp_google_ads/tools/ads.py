@@ -2,13 +2,24 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from google.api_core import protobuf_helpers
 
 from ..auth import get_client, get_service
 from ..coordinator import mcp
-from ..utils import error_response, resolve_customer_id, success_response, validate_numeric_id, validate_status
+from ..utils import (
+    error_response,
+    resolve_customer_id,
+    success_response,
+    validate_enum_value,
+    validate_limit,
+    validate_numeric_id,
+    validate_status,
+)
+
+logger = logging.getLogger(__name__)
 
 
 @mcp.tool()
@@ -22,6 +33,7 @@ def list_ads(
     """List ads with their RSA headlines, descriptions, and status."""
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
         conditions = []
         if ad_group_id:
@@ -72,6 +84,7 @@ def list_ads(
             })
         return success_response({"ads": ads_list, "count": len(ads_list)})
     except Exception as e:
+        logger.error("Failed to list ads: %s", e, exc_info=True)
         return error_response(f"Failed to list ads: {e}")
 
 
@@ -128,6 +141,7 @@ def get_ad(
             return success_response(data)
         return error_response(f"Ad {ad_id} not found in ad group {ad_group_id}")
     except Exception as e:
+        logger.error("Failed to get ad: %s", e, exc_info=True)
         return error_response(f"Failed to get ad: {e}")
 
 
@@ -186,6 +200,7 @@ def create_responsive_search_ad(
             message="RSA created as PAUSED",
         )
     except Exception as e:
+        logger.error("Failed to create RSA: %s", e, exc_info=True)
         return error_response(f"Failed to create RSA: {e}")
 
 
@@ -237,6 +252,7 @@ def update_ad(
             message=f"Ad {ad_id} updated",
         )
     except Exception as e:
+        logger.error("Failed to update ad: %s", e, exc_info=True)
         return error_response(f"Failed to update ad: {e}")
 
 
@@ -257,6 +273,7 @@ def set_ad_status(
         ad_group_ad = operation.update
         ad_group_ad.ad_group = f"customers/{cid}/adGroups/{ad_group_id}"
         ad_group_ad.ad.resource_name = f"customers/{cid}/ads/{ad_id}"
+        validate_enum_value(status, "status")
         ad_group_ad.status = getattr(client.enums.AdGroupAdStatusEnum, status)
 
         client.copy_from(
@@ -270,6 +287,7 @@ def set_ad_status(
             message=f"Ad {ad_id} set to {status}",
         )
     except Exception as e:
+        logger.error("Failed to set ad status: %s", e, exc_info=True)
         return error_response(f"Failed to set ad status: {e}")
 
 
@@ -283,6 +301,7 @@ def get_ad_strength(
     """Get ad strength ratings for RSA ads to identify optimization opportunities."""
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
         conditions = ["ad_group_ad.ad.type = 'RESPONSIVE_SEARCH_AD'"]
         if ad_group_id:
@@ -319,4 +338,5 @@ def get_ad_strength(
             })
         return success_response({"ads": results, "count": len(results)})
     except Exception as e:
+        logger.error("Failed to get ad strength: %s", e, exc_info=True)
         return error_response(f"Failed to get ad strength: {e}")

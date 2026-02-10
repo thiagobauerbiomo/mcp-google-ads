@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from ..auth import get_client, get_service
 from ..coordinator import mcp
-from ..utils import error_response, resolve_customer_id, success_response, validate_enum_value
+from ..utils import error_response, resolve_customer_id, success_response, validate_enum_value, validate_limit
+
+logger = logging.getLogger(__name__)
 
 
 @mcp.tool()
@@ -18,6 +21,7 @@ def list_assets(
     """List all assets (extensions) for an account."""
     try:
         cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
         service = get_service("GoogleAdsService")
         type_filter = f"WHERE asset.type = '{validate_enum_value(asset_type, 'asset_type')}'" if asset_type else ""
 
@@ -62,6 +66,7 @@ def list_assets(
             assets.append(asset_data)
         return success_response({"assets": assets, "count": len(assets)})
     except Exception as e:
+        logger.error("Failed to list assets: %s", e, exc_info=True)
         return error_response(f"Failed to list assets: {e}")
 
 
@@ -106,6 +111,7 @@ def create_sitelink_assets(
             message=f"{len(results)} sitelink assets created",
         )
     except Exception as e:
+        logger.error("Failed to create sitelinks: %s", e, exc_info=True)
         return error_response(f"Failed to create sitelinks: {e}")
 
 
@@ -141,6 +147,7 @@ def create_callout_assets(
             message=f"{len(results)} callout assets created",
         )
     except Exception as e:
+        logger.error("Failed to create callouts: %s", e, exc_info=True)
         return error_response(f"Failed to create callouts: {e}")
 
 
@@ -172,6 +179,7 @@ def create_structured_snippet_assets(
             message=f"Structured snippet '{header}' created with {len(values)} values",
         )
     except Exception as e:
+        logger.error("Failed to create structured snippet: %s", e, exc_info=True)
         return error_response(f"Failed to create structured snippet: {e}")
 
 
@@ -200,6 +208,7 @@ def create_call_asset(
             message=f"Call asset created: {phone_number}",
         )
     except Exception as e:
+        logger.error("Failed to create call asset: %s", e, exc_info=True)
         return error_response(f"Failed to create call asset: {e}")
 
 
@@ -223,6 +232,7 @@ def remove_asset(
             message=f"Asset {asset_id} removed",
         )
     except Exception as e:
+        logger.error("Failed to remove asset: %s", e, exc_info=True)
         return error_response(f"Failed to remove asset: {e}")
 
 
@@ -244,7 +254,7 @@ def create_image_asset(
         client = get_client()
         service = get_service("AssetService")
 
-        image_data = urllib.request.urlopen(image_url).read()
+        image_data = urllib.request.urlopen(image_url, timeout=30).read()
 
         operation = client.get_type("AssetOperation")
         asset = operation.create
@@ -259,6 +269,7 @@ def create_image_asset(
             message=f"Image asset '{asset_name}' created from URL",
         )
     except Exception as e:
+        logger.error("Failed to create image asset: %s", e, exc_info=True)
         return error_response(f"Failed to create image asset: {e}")
 
 
@@ -290,6 +301,7 @@ def create_video_asset(
             message=f"Video asset '{asset_name}' created",
         )
     except Exception as e:
+        logger.error("Failed to create video asset: %s", e, exc_info=True)
         return error_response(f"Failed to create video asset: {e}")
 
 
@@ -320,12 +332,14 @@ def create_lead_form_asset(
         lead_form.business_name = business_name
         lead_form.description = description
         lead_form.privacy_policy_url = privacy_policy_url
+        validate_enum_value(call_to_action, "call_to_action")
         lead_form.call_to_action_type = getattr(
             client.enums.LeadFormCallToActionTypeEnum, call_to_action
         )
 
         for field_name in fields:
             field_input = client.get_type("LeadFormField")
+            validate_enum_value(field_name, "field_name")
             field_input.input_type = getattr(client.enums.LeadFormFieldUserInputTypeEnum, field_name)
             lead_form.fields.append(field_input)
 
@@ -336,6 +350,7 @@ def create_lead_form_asset(
             message=f"Lead form asset '{headline}' created with {len(fields)} fields",
         )
     except Exception as e:
+        logger.error("Failed to create lead form asset: %s", e, exc_info=True)
         return error_response(f"Failed to create lead form asset: {e}")
 
 
@@ -362,6 +377,7 @@ def create_price_asset(
         asset = operation.create
         asset.name = f"Price Extension - {price_type}"
         price_asset = asset.price_asset
+        validate_enum_value(price_type, "price_type")
         price_asset.type_ = getattr(client.enums.PriceExtensionTypeEnum, price_type)
         price_asset.language_code = language_code
 
@@ -388,6 +404,7 @@ def create_price_asset(
             message=f"Price asset created with {len(price_items)} items",
         )
     except Exception as e:
+        logger.error("Failed to create price asset: %s", e, exc_info=True)
         return error_response(f"Failed to create price asset: {e}")
 
 
@@ -425,6 +442,7 @@ def create_promotion_asset(
             promo.discount_modifier = client.enums.PromotionExtensionDiscountModifierEnum.UP_TO
 
         if occasion:
+            validate_enum_value(occasion, "occasion")
             promo.occasion = getattr(client.enums.PromotionExtensionOccasionEnum, occasion)
 
         response = service.mutate_assets(customer_id=cid, operations=[operation])
@@ -434,6 +452,7 @@ def create_promotion_asset(
             message=f"Promotion asset '{promotion_target}' created",
         )
     except Exception as e:
+        logger.error("Failed to create promotion asset: %s", e, exc_info=True)
         return error_response(f"Failed to create promotion asset: {e}")
 
 
@@ -454,6 +473,7 @@ def link_asset_to_campaign(
         campaign_asset = operation.create
         campaign_asset.campaign = f"customers/{cid}/campaigns/{campaign_id}"
         campaign_asset.asset = f"customers/{cid}/assets/{asset_id}"
+        validate_enum_value(field_type, "field_type")
         campaign_asset.field_type = getattr(client.enums.AssetFieldTypeEnum, field_type)
 
         response = service.mutate_campaign_assets(customer_id=cid, operations=[operation])
@@ -462,6 +482,7 @@ def link_asset_to_campaign(
             message=f"Asset {asset_id} linked to campaign {campaign_id} as {field_type}",
         )
     except Exception as e:
+        logger.error("Failed to link asset to campaign: %s", e, exc_info=True)
         return error_response(f"Failed to link asset to campaign: {e}")
 
 
@@ -482,6 +503,7 @@ def link_asset_to_ad_group(
         ad_group_asset = operation.create
         ad_group_asset.ad_group = f"customers/{cid}/adGroups/{ad_group_id}"
         ad_group_asset.asset = f"customers/{cid}/assets/{asset_id}"
+        validate_enum_value(field_type, "field_type")
         ad_group_asset.field_type = getattr(client.enums.AssetFieldTypeEnum, field_type)
 
         response = service.mutate_ad_group_assets(customer_id=cid, operations=[operation])
@@ -490,6 +512,7 @@ def link_asset_to_ad_group(
             message=f"Asset {asset_id} linked to ad group {ad_group_id} as {field_type}",
         )
     except Exception as e:
+        logger.error("Failed to link asset to ad group: %s", e, exc_info=True)
         return error_response(f"Failed to link asset to ad group: {e}")
 
 
@@ -523,4 +546,5 @@ def unlink_asset(
             message=f"Asset unlinked from {resource_type}",
         )
     except Exception as e:
+        logger.error("Failed to unlink asset: %s", e, exc_info=True)
         return error_response(f"Failed to unlink asset: {e}")
