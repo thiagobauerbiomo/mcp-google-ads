@@ -49,4 +49,5 @@ def execute_gaql(
 
         return success_response({"rows": rows, "count": len(rows)})
     except Exception as e:
+        logger.error("GAQL query failed: %s", e, exc_info=True)
         return error_response(f"GAQL query failed: {e}")

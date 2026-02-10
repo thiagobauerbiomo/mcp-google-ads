@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Annotated
+from collections.abc import Callable
+from typing import Annotated, Any
 
 from ..auth import get_service
 from ..coordinator import mcp
@@ -39,6 +40,53 @@ def _build_where(
     return f"{where} {date}" if where else date
 
 
+def _run_report(
+    customer_id: str | None,
+    query_template: str,
+    field_extractor: Callable[[Any], dict],
+    conditions: list[str] | None = None,
+    date_range: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    limit: int = 1000,
+    default_date_range: str | None = "LAST_30_DAYS",
+    report_name: str = "report",
+) -> str:
+    """Execute a standard report query and return formatted results.
+
+    Encapsulates the common pattern: resolve customer ID, validate limit,
+    build WHERE clause, execute GAQL, extract fields, return success_response.
+
+    Args:
+        customer_id: The Google Ads customer ID.
+        query_template: GAQL query with {where} and {limit} placeholders.
+        field_extractor: Callable that receives a row and returns a dict of fields.
+        conditions: List of WHERE conditions (e.g. ["metrics.impressions > 0"]).
+        date_range: Predefined date range (LAST_7_DAYS, LAST_30_DAYS, etc.).
+        start_date: Start date YYYY-MM-DD (overrides date_range).
+        end_date: End date YYYY-MM-DD.
+        limit: Maximum number of results.
+        default_date_range: Default date range when none specified. Use None to skip date clause.
+        report_name: Key name for the report data in the response.
+    """
+    cid = resolve_customer_id(customer_id)
+    limit = validate_limit(limit)
+    service = get_service("GoogleAdsService")
+
+    if default_date_range is not None:
+        where = _build_where(
+            conditions or [], date_range, start_date, end_date, default_range=default_date_range
+        )
+    else:
+        where = "WHERE " + " AND ".join(conditions) if conditions else ""
+
+    query = query_template.format(where=where, limit=limit)
+    response = service.search(customer_id=cid, query=query)
+
+    rows = [field_extractor(row) for row in response]
+    return success_response({report_name: rows, "count": len(rows)})
+
+
 @mcp.tool()
 def campaign_performance_report(
     customer_id: Annotated[str, "The Google Ads customer ID"],
@@ -50,39 +98,32 @@ def campaign_performance_report(
 ) -> str:
     """Get campaign performance metrics: impressions, clicks, cost, conversions, CTR, CPC."""
     try:
-        cid = resolve_customer_id(customer_id)
-        limit = validate_limit(limit)
-        service = get_service("GoogleAdsService")
-
         conditions = ["metrics.impressions > 0"]
         if campaign_id:
             conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
 
-        where = _build_where(conditions, date_range, start_date, end_date)
-
-        query = f"""
-            SELECT
-                campaign.id,
-                campaign.name,
-                campaign.status,
-                metrics.impressions,
-                metrics.clicks,
-                metrics.cost_micros,
-                metrics.conversions,
-                metrics.conversions_value,
-                metrics.ctr,
-                metrics.average_cpc,
-                metrics.average_cpm,
-                metrics.cost_per_conversion
-            FROM campaign
-            {where}
-            ORDER BY metrics.cost_micros DESC
-            LIMIT {limit}
-        """
-        response = service.search(customer_id=cid, query=query)
-        rows = []
-        for row in response:
-            rows.append({
+        return _run_report(
+            customer_id=customer_id,
+            query_template="""
+                SELECT
+                    campaign.id,
+                    campaign.name,
+                    campaign.status,
+                    metrics.impressions,
+                    metrics.clicks,
+                    metrics.cost_micros,
+                    metrics.conversions,
+                    metrics.conversions_value,
+                    metrics.ctr,
+                    metrics.average_cpc,
+                    metrics.average_cpm,
+                    metrics.cost_per_conversion
+                FROM campaign
+                {where}
+                ORDER BY metrics.cost_micros DESC
+                LIMIT {limit}
+            """,
+            field_extractor=lambda row: {
                 "campaign_id": str(row.campaign.id),
                 "campaign_name": row.campaign.name,
                 "status": row.campaign.status.name,
@@ -94,8 +135,13 @@ def campaign_performance_report(
                 "ctr": round(row.metrics.ctr * 100, 2),
                 "avg_cpc": format_micros(row.metrics.average_cpc),
                 "cost_per_conversion": format_micros(row.metrics.cost_per_conversion),
-            })
-        return success_response({"report": rows, "count": len(rows)})
+            },
+            conditions=conditions,
+            date_range=date_range,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+        )
     except Exception as e:
         logger.error("Failed to get campaign performance: %s", e, exc_info=True)
         return error_response(f"Failed to get campaign performance: {e}")
@@ -112,38 +158,31 @@ def ad_group_performance_report(
 ) -> str:
     """Get ad group performance metrics."""
     try:
-        cid = resolve_customer_id(customer_id)
-        limit = validate_limit(limit)
-        service = get_service("GoogleAdsService")
-
         conditions = ["metrics.impressions > 0"]
         if campaign_id:
             conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
 
-        where = _build_where(conditions, date_range, start_date, end_date)
-
-        query = f"""
-            SELECT
-                ad_group.id,
-                ad_group.name,
-                ad_group.status,
-                campaign.id,
-                campaign.name,
-                metrics.impressions,
-                metrics.clicks,
-                metrics.cost_micros,
-                metrics.conversions,
-                metrics.ctr,
-                metrics.average_cpc
-            FROM ad_group
-            {where}
-            ORDER BY metrics.cost_micros DESC
-            LIMIT {limit}
-        """
-        response = service.search(customer_id=cid, query=query)
-        rows = []
-        for row in response:
-            rows.append({
+        return _run_report(
+            customer_id=customer_id,
+            query_template="""
+                SELECT
+                    ad_group.id,
+                    ad_group.name,
+                    ad_group.status,
+                    campaign.id,
+                    campaign.name,
+                    metrics.impressions,
+                    metrics.clicks,
+                    metrics.cost_micros,
+                    metrics.conversions,
+                    metrics.ctr,
+                    metrics.average_cpc
+                FROM ad_group
+                {where}
+                ORDER BY metrics.cost_micros DESC
+                LIMIT {limit}
+            """,
+            field_extractor=lambda row: {
                 "ad_group_id": str(row.ad_group.id),
                 "ad_group_name": row.ad_group.name,
                 "status": row.ad_group.status.name,
@@ -155,8 +194,13 @@ def ad_group_performance_report(
                 "conversions": round(row.metrics.conversions, 2),
                 "ctr": round(row.metrics.ctr * 100, 2),
                 "avg_cpc": format_micros(row.metrics.average_cpc),
-            })
-        return success_response({"report": rows, "count": len(rows)})
+            },
+            conditions=conditions,
+            date_range=date_range,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+        )
     except Exception as e:
         logger.error("Failed to get ad group performance: %s", e, exc_info=True)
         return error_response(f"Failed to get ad group performance: {e}")
@@ -174,43 +218,36 @@ def ad_performance_report(
 ) -> str:
     """Get ad-level performance metrics including ad strength."""
     try:
-        cid = resolve_customer_id(customer_id)
-        limit = validate_limit(limit)
-        service = get_service("GoogleAdsService")
-
         conditions = ["metrics.impressions > 0"]
         if campaign_id:
             conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
         if ad_group_id:
             conditions.append(f"ad_group.id = {validate_numeric_id(ad_group_id, 'ad_group_id')}")
 
-        where = _build_where(conditions, date_range, start_date, end_date)
-
-        query = f"""
-            SELECT
-                ad_group_ad.ad.id,
-                ad_group_ad.ad.type,
-                ad_group_ad.status,
-                ad_group_ad.ad_strength,
-                ad_group.id,
-                ad_group.name,
-                campaign.id,
-                campaign.name,
-                metrics.impressions,
-                metrics.clicks,
-                metrics.cost_micros,
-                metrics.conversions,
-                metrics.ctr,
-                metrics.average_cpc
-            FROM ad_group_ad
-            {where}
-            ORDER BY metrics.cost_micros DESC
-            LIMIT {limit}
-        """
-        response = service.search(customer_id=cid, query=query)
-        rows = []
-        for row in response:
-            rows.append({
+        return _run_report(
+            customer_id=customer_id,
+            query_template="""
+                SELECT
+                    ad_group_ad.ad.id,
+                    ad_group_ad.ad.type,
+                    ad_group_ad.status,
+                    ad_group_ad.ad_strength,
+                    ad_group.id,
+                    ad_group.name,
+                    campaign.id,
+                    campaign.name,
+                    metrics.impressions,
+                    metrics.clicks,
+                    metrics.cost_micros,
+                    metrics.conversions,
+                    metrics.ctr,
+                    metrics.average_cpc
+                FROM ad_group_ad
+                {where}
+                ORDER BY metrics.cost_micros DESC
+                LIMIT {limit}
+            """,
+            field_extractor=lambda row: {
                 "ad_id": str(row.ad_group_ad.ad.id),
                 "ad_type": row.ad_group_ad.ad.type_.name,
                 "status": row.ad_group_ad.status.name,
@@ -223,8 +260,13 @@ def ad_performance_report(
                 "conversions": round(row.metrics.conversions, 2),
                 "ctr": round(row.metrics.ctr * 100, 2),
                 "avg_cpc": format_micros(row.metrics.average_cpc),
-            })
-        return success_response({"report": rows, "count": len(rows)})
+            },
+            conditions=conditions,
+            date_range=date_range,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+        )
     except Exception as e:
         logger.error("Failed to get ad performance: %s", e, exc_info=True)
         return error_response(f"Failed to get ad performance: {e}")
@@ -242,42 +284,35 @@ def keyword_performance_report(
 ) -> str:
     """Get keyword performance with quality score, CTR, and conversion data."""
     try:
-        cid = resolve_customer_id(customer_id)
-        limit = validate_limit(limit)
-        service = get_service("GoogleAdsService")
-
         conditions = ["ad_group_criterion.type = 'KEYWORD'", "metrics.impressions > 0"]
         if campaign_id:
             conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
         if ad_group_id:
             conditions.append(f"ad_group.id = {validate_numeric_id(ad_group_id, 'ad_group_id')}")
 
-        where = _build_where(conditions, date_range, start_date, end_date)
-
-        query = f"""
-            SELECT
-                ad_group_criterion.keyword.text,
-                ad_group_criterion.keyword.match_type,
-                ad_group_criterion.status,
-                ad_group_criterion.quality_info.quality_score,
-                ad_group.id,
-                campaign.id,
-                campaign.name,
-                metrics.impressions,
-                metrics.clicks,
-                metrics.cost_micros,
-                metrics.conversions,
-                metrics.ctr,
-                metrics.average_cpc
-            FROM keyword_view
-            {where}
-            ORDER BY metrics.cost_micros DESC
-            LIMIT {limit}
-        """
-        response = service.search(customer_id=cid, query=query)
-        rows = []
-        for row in response:
-            rows.append({
+        return _run_report(
+            customer_id=customer_id,
+            query_template="""
+                SELECT
+                    ad_group_criterion.keyword.text,
+                    ad_group_criterion.keyword.match_type,
+                    ad_group_criterion.status,
+                    ad_group_criterion.quality_info.quality_score,
+                    ad_group.id,
+                    campaign.id,
+                    campaign.name,
+                    metrics.impressions,
+                    metrics.clicks,
+                    metrics.cost_micros,
+                    metrics.conversions,
+                    metrics.ctr,
+                    metrics.average_cpc
+                FROM keyword_view
+                {where}
+                ORDER BY metrics.cost_micros DESC
+                LIMIT {limit}
+            """,
+            field_extractor=lambda row: {
                 "keyword": row.ad_group_criterion.keyword.text,
                 "match_type": row.ad_group_criterion.keyword.match_type.name,
                 "status": row.ad_group_criterion.status.name,
@@ -290,8 +325,13 @@ def keyword_performance_report(
                 "conversions": round(row.metrics.conversions, 2),
                 "ctr": round(row.metrics.ctr * 100, 2),
                 "avg_cpc": format_micros(row.metrics.average_cpc),
-            })
-        return success_response({"report": rows, "count": len(rows)})
+            },
+            conditions=conditions,
+            date_range=date_range,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+        )
     except Exception as e:
         logger.error("Failed to get keyword performance: %s", e, exc_info=True)
         return error_response(f"Failed to get keyword performance: {e}")
@@ -308,38 +348,31 @@ def search_terms_report(
 ) -> str:
     """Get search terms that triggered ads. Essential for finding negative keyword opportunities."""
     try:
-        cid = resolve_customer_id(customer_id)
-        limit = validate_limit(limit)
-        service = get_service("GoogleAdsService")
-
         conditions = ["metrics.impressions > 0"]
         if campaign_id:
             conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
 
-        where = _build_where(conditions, date_range, start_date, end_date)
-
-        query = f"""
-            SELECT
-                search_term_view.search_term,
-                search_term_view.status,
-                ad_group_criterion.keyword.text,
-                ad_group_criterion.keyword.match_type,
-                campaign.id,
-                campaign.name,
-                metrics.impressions,
-                metrics.clicks,
-                metrics.cost_micros,
-                metrics.conversions,
-                metrics.ctr
-            FROM search_term_view
-            {where}
-            ORDER BY metrics.impressions DESC
-            LIMIT {limit}
-        """
-        response = service.search(customer_id=cid, query=query)
-        rows = []
-        for row in response:
-            rows.append({
+        return _run_report(
+            customer_id=customer_id,
+            query_template="""
+                SELECT
+                    search_term_view.search_term,
+                    search_term_view.status,
+                    ad_group_criterion.keyword.text,
+                    ad_group_criterion.keyword.match_type,
+                    campaign.id,
+                    campaign.name,
+                    metrics.impressions,
+                    metrics.clicks,
+                    metrics.cost_micros,
+                    metrics.conversions,
+                    metrics.ctr
+                FROM search_term_view
+                {where}
+                ORDER BY metrics.impressions DESC
+                LIMIT {limit}
+            """,
+            field_extractor=lambda row: {
                 "search_term": row.search_term_view.search_term,
                 "status": row.search_term_view.status.name,
                 "matched_keyword": row.ad_group_criterion.keyword.text,
@@ -351,8 +384,13 @@ def search_terms_report(
                 "cost": format_micros(row.metrics.cost_micros),
                 "conversions": round(row.metrics.conversions, 2),
                 "ctr": round(row.metrics.ctr * 100, 2),
-            })
-        return success_response({"report": rows, "count": len(rows)})
+            },
+            conditions=conditions,
+            date_range=date_range,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+        )
     except Exception as e:
         logger.error("Failed to get search terms report: %s", e, exc_info=True)
         return error_response(f"Failed to get search terms report: {e}")
@@ -369,36 +407,29 @@ def audience_performance_report(
 ) -> str:
     """Get audience segment performance metrics."""
     try:
-        cid = resolve_customer_id(customer_id)
-        limit = validate_limit(limit)
-        service = get_service("GoogleAdsService")
-
         conditions = ["metrics.impressions > 0"]
         if campaign_id:
             conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
 
-        where = _build_where(conditions, date_range, start_date, end_date)
-
-        query = f"""
-            SELECT
-                campaign_audience_view.resource_name,
-                campaign.id,
-                campaign.name,
-                metrics.impressions,
-                metrics.clicks,
-                metrics.cost_micros,
-                metrics.conversions,
-                metrics.ctr,
-                metrics.average_cpc
-            FROM campaign_audience_view
-            {where}
-            ORDER BY metrics.impressions DESC
-            LIMIT {limit}
-        """
-        response = service.search(customer_id=cid, query=query)
-        rows = []
-        for row in response:
-            rows.append({
+        return _run_report(
+            customer_id=customer_id,
+            query_template="""
+                SELECT
+                    campaign_audience_view.resource_name,
+                    campaign.id,
+                    campaign.name,
+                    metrics.impressions,
+                    metrics.clicks,
+                    metrics.cost_micros,
+                    metrics.conversions,
+                    metrics.ctr,
+                    metrics.average_cpc
+                FROM campaign_audience_view
+                {where}
+                ORDER BY metrics.impressions DESC
+                LIMIT {limit}
+            """,
+            field_extractor=lambda row: {
                 "resource_name": row.campaign_audience_view.resource_name,
                 "campaign_id": str(row.campaign.id),
                 "campaign_name": row.campaign.name,
@@ -408,8 +439,13 @@ def audience_performance_report(
                 "conversions": round(row.metrics.conversions, 2),
                 "ctr": round(row.metrics.ctr * 100, 2),
                 "avg_cpc": format_micros(row.metrics.average_cpc),
-            })
-        return success_response({"report": rows, "count": len(rows)})
+            },
+            conditions=conditions,
+            date_range=date_range,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+        )
     except Exception as e:
         logger.error("Failed to get audience performance: %s", e, exc_info=True)
         return error_response(f"Failed to get audience performance: {e}")
@@ -426,36 +462,29 @@ def geographic_performance_report(
 ) -> str:
     """Get geographic performance by country, region, and city."""
     try:
-        cid = resolve_customer_id(customer_id)
-        limit = validate_limit(limit)
-        service = get_service("GoogleAdsService")
-
         conditions = ["metrics.impressions > 0"]
         if campaign_id:
             conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
 
-        where = _build_where(conditions, date_range, start_date, end_date)
-
-        query = f"""
-            SELECT
-                geographic_view.country_criterion_id,
-                geographic_view.location_type,
-                campaign.id,
-                campaign.name,
-                metrics.impressions,
-                metrics.clicks,
-                metrics.cost_micros,
-                metrics.conversions,
-                metrics.ctr
-            FROM geographic_view
-            {where}
-            ORDER BY metrics.impressions DESC
-            LIMIT {limit}
-        """
-        response = service.search(customer_id=cid, query=query)
-        rows = []
-        for row in response:
-            rows.append({
+        return _run_report(
+            customer_id=customer_id,
+            query_template="""
+                SELECT
+                    geographic_view.country_criterion_id,
+                    geographic_view.location_type,
+                    campaign.id,
+                    campaign.name,
+                    metrics.impressions,
+                    metrics.clicks,
+                    metrics.cost_micros,
+                    metrics.conversions,
+                    metrics.ctr
+                FROM geographic_view
+                {where}
+                ORDER BY metrics.impressions DESC
+                LIMIT {limit}
+            """,
+            field_extractor=lambda row: {
                 "country_criterion_id": str(row.geographic_view.country_criterion_id),
                 "location_type": row.geographic_view.location_type.name,
                 "campaign_id": str(row.campaign.id),
@@ -465,8 +494,13 @@ def geographic_performance_report(
                 "cost": format_micros(row.metrics.cost_micros),
                 "conversions": round(row.metrics.conversions, 2),
                 "ctr": round(row.metrics.ctr * 100, 2),
-            })
-        return success_response({"report": rows, "count": len(rows)})
+            },
+            conditions=conditions,
+            date_range=date_range,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+        )
     except Exception as e:
         logger.error("Failed to get geographic performance: %s", e, exc_info=True)
         return error_response(f"Failed to get geographic performance: {e}")
@@ -482,38 +516,37 @@ def change_history_report(
 ) -> str:
     """Get recent change history showing who made what changes and when."""
     try:
-        cid = resolve_customer_id(customer_id)
-        limit = validate_limit(limit)
-        service = get_service("GoogleAdsService")
-
-        where = _build_where([], date_range, start_date, end_date, default_range="LAST_7_DAYS")
-
-        query = f"""
-            SELECT
-                change_event.change_date_time,
-                change_event.change_resource_type,
-                change_event.change_resource_name,
-                change_event.resource_change_operation,
-                change_event.user_email,
-                change_event.client_type,
-                change_event.changed_fields
-            FROM change_event
-            {where}
-            ORDER BY change_event.change_date_time DESC
-            LIMIT {limit}
-        """
-        response = service.search(customer_id=cid, query=query)
-        rows = []
-        for row in response:
-            rows.append({
+        return _run_report(
+            customer_id=customer_id,
+            query_template="""
+                SELECT
+                    change_event.change_date_time,
+                    change_event.change_resource_type,
+                    change_event.change_resource_name,
+                    change_event.resource_change_operation,
+                    change_event.user_email,
+                    change_event.client_type,
+                    change_event.changed_fields
+                FROM change_event
+                {where}
+                ORDER BY change_event.change_date_time DESC
+                LIMIT {limit}
+            """,
+            field_extractor=lambda row: {
                 "change_date": row.change_event.change_date_time,
                 "resource_type": row.change_event.change_resource_type.name,
                 "resource_name": row.change_event.change_resource_name,
                 "operation": row.change_event.resource_change_operation.name,
                 "user_email": row.change_event.user_email,
                 "client_type": row.change_event.client_type.name,
-            })
-        return success_response({"changes": rows, "count": len(rows)})
+            },
+            date_range=date_range,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+            default_date_range="LAST_7_DAYS",
+            report_name="changes",
+        )
     except Exception as e:
         logger.error("Failed to get change history: %s", e, exc_info=True)
         return error_response(f"Failed to get change history: {e}")
@@ -530,37 +563,30 @@ def device_performance_report(
 ) -> str:
     """Get performance metrics segmented by device (mobile, desktop, tablet)."""
     try:
-        cid = resolve_customer_id(customer_id)
-        limit = validate_limit(limit)
-        service = get_service("GoogleAdsService")
-
         conditions = ["metrics.impressions > 0"]
         if campaign_id:
             conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
 
-        where = _build_where(conditions, date_range, start_date, end_date)
-
-        query = f"""
-            SELECT
-                segments.device,
-                campaign.id,
-                campaign.name,
-                metrics.impressions,
-                metrics.clicks,
-                metrics.cost_micros,
-                metrics.conversions,
-                metrics.ctr,
-                metrics.average_cpc,
-                metrics.cost_per_conversion
-            FROM campaign
-            {where}
-            ORDER BY metrics.cost_micros DESC
-            LIMIT {limit}
-        """
-        response = service.search(customer_id=cid, query=query)
-        rows = []
-        for row in response:
-            rows.append({
+        return _run_report(
+            customer_id=customer_id,
+            query_template="""
+                SELECT
+                    segments.device,
+                    campaign.id,
+                    campaign.name,
+                    metrics.impressions,
+                    metrics.clicks,
+                    metrics.cost_micros,
+                    metrics.conversions,
+                    metrics.ctr,
+                    metrics.average_cpc,
+                    metrics.cost_per_conversion
+                FROM campaign
+                {where}
+                ORDER BY metrics.cost_micros DESC
+                LIMIT {limit}
+            """,
+            field_extractor=lambda row: {
                 "device": row.segments.device.name,
                 "campaign_id": str(row.campaign.id),
                 "campaign_name": row.campaign.name,
@@ -571,8 +597,13 @@ def device_performance_report(
                 "ctr": round(row.metrics.ctr * 100, 2),
                 "avg_cpc": format_micros(row.metrics.average_cpc),
                 "cost_per_conversion": format_micros(row.metrics.cost_per_conversion),
-            })
-        return success_response({"report": rows, "count": len(rows)})
+            },
+            conditions=conditions,
+            date_range=date_range,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+        )
     except Exception as e:
         logger.error("Failed to get device performance: %s", e, exc_info=True)
         return error_response(f"Failed to get device performance: {e}")
@@ -592,36 +623,29 @@ def hourly_performance_report(
     Useful for identifying best-performing times to set ad schedules.
     """
     try:
-        cid = resolve_customer_id(customer_id)
-        limit = validate_limit(limit)
-        service = get_service("GoogleAdsService")
-
         conditions = ["metrics.impressions > 0"]
         if campaign_id:
             conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
 
-        where = _build_where(conditions, date_range, start_date, end_date, default_range="LAST_7_DAYS")
-
-        query = f"""
-            SELECT
-                segments.hour,
-                segments.day_of_week,
-                campaign.id,
-                campaign.name,
-                metrics.impressions,
-                metrics.clicks,
-                metrics.cost_micros,
-                metrics.conversions,
-                metrics.ctr
-            FROM campaign
-            {where}
-            ORDER BY segments.day_of_week, segments.hour
-            LIMIT {limit}
-        """
-        response = service.search(customer_id=cid, query=query)
-        rows = []
-        for row in response:
-            rows.append({
+        return _run_report(
+            customer_id=customer_id,
+            query_template="""
+                SELECT
+                    segments.hour,
+                    segments.day_of_week,
+                    campaign.id,
+                    campaign.name,
+                    metrics.impressions,
+                    metrics.clicks,
+                    metrics.cost_micros,
+                    metrics.conversions,
+                    metrics.ctr
+                FROM campaign
+                {where}
+                ORDER BY segments.day_of_week, segments.hour
+                LIMIT {limit}
+            """,
+            field_extractor=lambda row: {
                 "hour": row.segments.hour,
                 "day_of_week": row.segments.day_of_week.name,
                 "campaign_id": str(row.campaign.id),
@@ -631,8 +655,14 @@ def hourly_performance_report(
                 "cost": format_micros(row.metrics.cost_micros),
                 "conversions": round(row.metrics.conversions, 2),
                 "ctr": round(row.metrics.ctr * 100, 2),
-            })
-        return success_response({"report": rows, "count": len(rows)})
+            },
+            conditions=conditions,
+            date_range=date_range,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+            default_date_range="LAST_7_DAYS",
+        )
     except Exception as e:
         logger.error("Failed to get hourly performance: %s", e, exc_info=True)
         return error_response(f"Failed to get hourly performance: {e}")
@@ -745,37 +775,30 @@ def placement_report(
     Shows which websites, apps, and YouTube channels/videos showed your ads.
     """
     try:
-        cid = resolve_customer_id(customer_id)
-        limit = validate_limit(limit)
-        service = get_service("GoogleAdsService")
-
         conditions = ["metrics.impressions > 0"]
         if campaign_id:
             conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
 
-        where = _build_where(conditions, date_range, start_date, end_date)
-
-        query = f"""
-            SELECT
-                detail_placement_view.display_name,
-                detail_placement_view.target_url,
-                detail_placement_view.placement_type,
-                campaign.id,
-                campaign.name,
-                metrics.impressions,
-                metrics.clicks,
-                metrics.cost_micros,
-                metrics.conversions,
-                metrics.ctr
-            FROM detail_placement_view
-            {where}
-            ORDER BY metrics.impressions DESC
-            LIMIT {limit}
-        """
-        response = service.search(customer_id=cid, query=query)
-        rows = []
-        for row in response:
-            rows.append({
+        return _run_report(
+            customer_id=customer_id,
+            query_template="""
+                SELECT
+                    detail_placement_view.display_name,
+                    detail_placement_view.target_url,
+                    detail_placement_view.placement_type,
+                    campaign.id,
+                    campaign.name,
+                    metrics.impressions,
+                    metrics.clicks,
+                    metrics.cost_micros,
+                    metrics.conversions,
+                    metrics.ctr
+                FROM detail_placement_view
+                {where}
+                ORDER BY metrics.impressions DESC
+                LIMIT {limit}
+            """,
+            field_extractor=lambda row: {
                 "display_name": row.detail_placement_view.display_name,
                 "target_url": row.detail_placement_view.target_url,
                 "placement_type": row.detail_placement_view.placement_type.name,
@@ -786,8 +809,13 @@ def placement_report(
                 "cost": format_micros(row.metrics.cost_micros),
                 "conversions": round(row.metrics.conversions, 2),
                 "ctr": round(row.metrics.ctr * 100, 2),
-            })
-        return success_response({"report": rows, "count": len(rows)})
+            },
+            conditions=conditions,
+            date_range=date_range,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+        )
     except Exception as e:
         logger.error("Failed to get placement report: %s", e, exc_info=True)
         return error_response(f"Failed to get placement report: {e}")
@@ -804,10 +832,6 @@ def quality_score_report(
     Includes quality score, expected CTR, ad relevance, and landing page experience.
     """
     try:
-        cid = resolve_customer_id(customer_id)
-        limit = validate_limit(limit)
-        service = get_service("GoogleAdsService")
-
         conditions = [
             "ad_group_criterion.type = 'KEYWORD'",
             "ad_group_criterion.status = 'ENABLED'",
@@ -815,29 +839,26 @@ def quality_score_report(
         if campaign_id:
             conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
 
-        where = "WHERE " + " AND ".join(conditions)
-
-        query = f"""
-            SELECT
-                ad_group_criterion.keyword.text,
-                ad_group_criterion.keyword.match_type,
-                ad_group_criterion.quality_info.quality_score,
-                ad_group_criterion.quality_info.creative_quality_score,
-                ad_group_criterion.quality_info.post_click_quality_score,
-                ad_group_criterion.quality_info.search_predicted_ctr,
-                ad_group.id,
-                ad_group.name,
-                campaign.id,
-                campaign.name
-            FROM ad_group_criterion
-            {where}
-            ORDER BY ad_group_criterion.quality_info.quality_score ASC
-            LIMIT {limit}
-        """
-        response = service.search(customer_id=cid, query=query)
-        rows = []
-        for row in response:
-            rows.append({
+        return _run_report(
+            customer_id=customer_id,
+            query_template="""
+                SELECT
+                    ad_group_criterion.keyword.text,
+                    ad_group_criterion.keyword.match_type,
+                    ad_group_criterion.quality_info.quality_score,
+                    ad_group_criterion.quality_info.creative_quality_score,
+                    ad_group_criterion.quality_info.post_click_quality_score,
+                    ad_group_criterion.quality_info.search_predicted_ctr,
+                    ad_group.id,
+                    ad_group.name,
+                    campaign.id,
+                    campaign.name
+                FROM ad_group_criterion
+                {where}
+                ORDER BY ad_group_criterion.quality_info.quality_score ASC
+                LIMIT {limit}
+            """,
+            field_extractor=lambda row: {
                 "keyword": row.ad_group_criterion.keyword.text,
                 "match_type": row.ad_group_criterion.keyword.match_type.name,
                 "quality_score": row.ad_group_criterion.quality_info.quality_score,
@@ -848,8 +869,11 @@ def quality_score_report(
                 "ad_group_name": row.ad_group.name,
                 "campaign_id": str(row.campaign.id),
                 "campaign_name": row.campaign.name,
-            })
-        return success_response({"report": rows, "count": len(rows)})
+            },
+            conditions=conditions,
+            limit=limit,
+            default_date_range=None,
+        )
     except Exception as e:
         logger.error("Failed to get quality score report: %s", e, exc_info=True)
         return error_response(f"Failed to get quality score report: {e}")

@@ -13,6 +13,7 @@ from ..utils import (
     error_response,
     resolve_customer_id,
     success_response,
+    validate_batch,
     validate_enum_value,
     validate_limit,
     validate_numeric_id,
@@ -243,14 +244,13 @@ def import_offline_conversions(
     try:
         cid = resolve_customer_id(customer_id)
 
-        if len(conversions) > 2000:
-            return error_response(f"Maximum 2000 conversions per call, received: {len(conversions)}")
-
-        required_fields = ("gclid", "conversion_action_id", "conversion_date_time")
-        for conv in conversions:
-            for field in required_fields:
-                if field not in conv:
-                    return error_response(f"Each conversion must have a '{field}' field")
+        error = validate_batch(
+            conversions, max_size=2000,
+            required_fields=["gclid", "conversion_action_id", "conversion_date_time"],
+            item_name="conversions",
+        )
+        if error:
+            return error_response(error)
 
         client = get_client()
         service = get_service("ConversionUploadService")

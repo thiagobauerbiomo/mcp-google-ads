@@ -126,6 +126,35 @@ def validate_limit(limit: int, max_limit: int = 10000) -> int:
     return limit
 
 
+def validate_batch(
+    items: list,
+    max_size: int = 5000,
+    required_fields: list[str] | None = None,
+    item_name: str = "items",
+) -> str | None:
+    """Validate a batch of items. Returns error message if invalid, None if OK."""
+    if len(items) > max_size:
+        return f"Maximum {max_size} {item_name} per call, received: {len(items)}"
+    if required_fields:
+        for i, item in enumerate(items):
+            if isinstance(item, dict):
+                for field in required_fields:
+                    if field not in item:
+                        return f"Item {i}: missing required field '{field}'"
+    return None
+
+
+def process_partial_failure(response) -> list[dict] | None:
+    """Extract partial failure errors from a Google Ads API response.
+    Returns list of error dicts if any, None if all succeeded."""
+    if not hasattr(response, 'partial_failure_error') or not response.partial_failure_error:
+        return None
+    errors = []
+    for error_detail in response.partial_failure_error.details:
+        errors.append({"message": str(error_detail)})
+    return errors or None
+
+
 def build_date_clause(
     date_range: str | None = None,
     start_date: str | None = None,

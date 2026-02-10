@@ -14,6 +14,7 @@ from ..utils import (
     success_response,
     validate_enum_value,
     validate_limit,
+    validate_numeric_id,
 )
 
 logger = logging.getLogger(__name__)
@@ -84,6 +85,7 @@ def get_recommendation(
     """Get detailed information about a specific recommendation."""
     try:
         cid = resolve_customer_id(customer_id)
+        safe_rec_id = validate_numeric_id(recommendation_id, "recommendation_id")
         service = get_service("GoogleAdsService")
 
         query = f"""
@@ -100,7 +102,7 @@ def get_recommendation(
                 recommendation.ad_group,
                 recommendation.dismissed
             FROM recommendation
-            WHERE recommendation.resource_name = 'customers/{cid}/recommendations/{recommendation_id}'
+            WHERE recommendation.resource_name = 'customers/{cid}/recommendations/{safe_rec_id}'
         """
         response = service.search(customer_id=cid, query=query)
         for row in response:

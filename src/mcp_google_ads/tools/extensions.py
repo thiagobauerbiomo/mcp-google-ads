@@ -7,7 +7,15 @@ from typing import Annotated
 
 from ..auth import get_client, get_service
 from ..coordinator import mcp
-from ..utils import error_response, resolve_customer_id, success_response, validate_enum_value, validate_limit
+from ..utils import (
+    error_response,
+    process_partial_failure,
+    resolve_customer_id,
+    success_response,
+    validate_batch,
+    validate_enum_value,
+    validate_limit,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -82,12 +90,9 @@ def create_sitelink_assets(
     try:
         cid = resolve_customer_id(customer_id)
 
-        if len(sitelinks) > 5000:
-            return error_response(f"Maximum 5000 sitelinks per call, received: {len(sitelinks)}")
-
-        for sl in sitelinks:
-            if "link_text" not in sl or "final_url" not in sl:
-                return error_response("Each sitelink must have 'link_text' and 'final_url' fields")
+        error = validate_batch(sitelinks, max_size=5000, required_fields=["link_text", "final_url"], item_name="sitelinks")
+        if error:
+            return error_response(error)
 
         client = get_client()
         service = get_service("AssetService")
@@ -104,10 +109,14 @@ def create_sitelink_assets(
                 asset.sitelink_asset.description2 = sl["description2"]
             operations.append(operation)
 
-        response = service.mutate_assets(customer_id=cid, operations=operations)
+        response = service.mutate_assets(customer_id=cid, operations=operations, partial_failure=True)
+        partial_errors = process_partial_failure(response)
         results = [r.resource_name for r in response.results]
+        result_data = {"created": len(results), "resource_names": results}
+        if partial_errors:
+            result_data["partial_errors"] = partial_errors
         return success_response(
-            {"created": len(results), "resource_names": results},
+            result_data,
             message=f"{len(results)} sitelink assets created",
         )
     except Exception as e:
@@ -127,8 +136,9 @@ def create_callout_assets(
     try:
         cid = resolve_customer_id(customer_id)
 
-        if len(callouts) > 5000:
-            return error_response(f"Maximum 5000 callouts per call, received: {len(callouts)}")
+        error = validate_batch(callouts, max_size=5000, item_name="callouts")
+        if error:
+            return error_response(error)
 
         client = get_client()
         service = get_service("AssetService")
@@ -140,10 +150,14 @@ def create_callout_assets(
             asset.callout_asset.callout_text = text
             operations.append(operation)
 
-        response = service.mutate_assets(customer_id=cid, operations=operations)
+        response = service.mutate_assets(customer_id=cid, operations=operations, partial_failure=True)
+        partial_errors = process_partial_failure(response)
         results = [r.resource_name for r in response.results]
+        result_data = {"created": len(results), "resource_names": results}
+        if partial_errors:
+            result_data["partial_errors"] = partial_errors
         return success_response(
-            {"created": len(results), "resource_names": results},
+            result_data,
             message=f"{len(results)} callout assets created",
         )
     except Exception as e:
@@ -248,13 +262,21 @@ def create_image_asset(
     Supported formats: JPEG, PNG, GIF. Recommended sizes: 1200x628, 1200x1200, 128x128.
     """
     try:
+        import urllib.error
         import urllib.request
 
         cid = resolve_customer_id(customer_id)
         client = get_client()
         service = get_service("AssetService")
 
-        image_data = urllib.request.urlopen(image_url, timeout=30).read()
+        try:
+            image_data = urllib.request.urlopen(image_url, timeout=30).read()
+        except urllib.error.HTTPError as e:
+            logger.error("HTTP error downloading image from %s: %s", image_url, e, exc_info=True)
+            return error_response(f"HTTP error {e.code} downloading image: {e.reason}")
+        except urllib.error.URLError as e:
+            logger.error("URL error downloading image from %s: %s", image_url, e, exc_info=True)
+            return error_response(f"Failed to download image (network error): {e.reason}")
 
         operation = client.get_type("AssetOperation")
         asset = operation.create
@@ -373,6 +395,10 @@ def create_price_asset(
         client = get_client()
         service = get_service("AssetService")
 
+        error = validate_batch(price_items, max_size=5000, required_fields=["header", "description", "final_url", "price_micros"], item_name="price_items")
+        if error:
+            return error_response(error)
+
         operation = client.get_type("AssetOperation")
         asset = operation.create
         asset.name = f"Price Extension - {price_type}"
@@ -380,11 +406,6 @@ def create_price_asset(
         validate_enum_value(price_type, "price_type")
         price_asset.type_ = getattr(client.enums.PriceExtensionTypeEnum, price_type)
         price_asset.language_code = language_code
-
-        for item in price_items:
-            for field in ("header", "description", "final_url", "price_micros"):
-                if field not in item:
-                    return error_response(f"Each price item must have a '{field}' field")
 
         for item in price_items:
             price_offering = client.get_type("PriceOffering")

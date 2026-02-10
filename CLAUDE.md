@@ -105,7 +105,7 @@ Todos os 14 reports suportam datas customizadas:
 - Auth com retry e backoff exponencial (3 tentativas)
 - Timeout de 30s em create_image_asset (urllib)
 
-## Testes (202 testes, 53% cobertura)
+## Testes (430 testes, 82% cobertura)
 Cobertura de todos os 20 modulos de tools + utils, config, auth, server:
 ```
 tests/
@@ -114,20 +114,20 @@ tests/
 ├── test_config.py           #  6 testes
 ├── test_auth.py             #  4 testes
 ├── test_server.py           #  2 testes (main + LOG_LEVEL)
-├── test_campaigns.py        #  6 testes
-├── test_ad_groups.py        #  2 testes
-├── test_ads.py              #  2 testes
-├── test_keywords.py         #  3 testes
-├── test_reporting.py        #  6 testes
-├── test_labels.py           #  5 testes
-├── test_conversions.py      #  3 testes
+├── test_campaigns.py        # 36 testes (todas as 7 tools, status, labels, error paths)
+├── test_ad_groups.py        # 36 testes (todas as 6 tools, validação, error paths)
+├── test_ads.py              # 44 testes (todas as 6 tools, RSA, status, strength)
+├── test_keywords.py         # 36 testes (todas as 9 tools, batch, dedup, forecast)
+├── test_reporting.py        # 55 testes (_run_report, _build_where, 14 reports)
+├── test_labels.py           # 18 testes (todas as 8 tools, apply/remove)
+├── test_conversions.py      # 16 testes (CRUD, offline import, batch, goals)
 ├── test_shared_sets.py      #  3 testes
 ├── test_targeting.py        #  5 testes
 ├── test_search.py           #  7 testes (execute_gaql protections)
 ├── test_dashboard.py        #  4 testes
 ├── test_audiences.py        #  9 testes
 ├── test_bidding.py          #  7 testes
-├── test_extensions.py       # 11 testes (batch limits, dict validation)
+├── test_extensions.py       # 27 testes (14 tools, image URL, batch, partial_failure)
 ├── test_recommendations.py  #  9 testes
 ├── test_experiments.py      # 10 testes (validate_numeric_id)
 ├── test_account_management.py # 7 testes
@@ -136,7 +136,8 @@ tests/
 └── test_budgets.py          # 32 testes (todas as 4 tools + micros + delivery_method)
 ```
 
-Modulos com 100% cobertura: auth, config, coordinator, exceptions, utils, accounts, account_management, budgets, search
+Modulos com 100% cobertura: auth, config, coordinator, exceptions, utils, accounts, account_management, budgets, search, ad_groups, ads
+Modulos acima de 90%: campaigns (99%), keywords (97%), labels (94%), conversions (91%), reporting (90%), server (93%), utils (98%)
 
 ## Dependencias Principais
 - `google-ads >= 28.0.0, < 29.0.0` (API v23, pinned major)

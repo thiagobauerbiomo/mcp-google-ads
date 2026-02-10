@@ -12,9 +12,11 @@ from ..coordinator import mcp
 from ..utils import (
     error_response,
     format_micros,
+    process_partial_failure,
     resolve_customer_id,
     success_response,
     to_micros,
+    validate_batch,
     validate_enum_value,
     validate_limit,
     validate_numeric_id,
@@ -97,12 +99,9 @@ def add_keywords(
     try:
         cid = resolve_customer_id(customer_id)
 
-        if len(keywords) > 5000:
-            return error_response(f"Maximum 5000 keywords per call, received: {len(keywords)}")
-
-        for kw in keywords:
-            if "text" not in kw:
-                return error_response("Each keyword must have a 'text' field")
+        error = validate_batch(keywords, max_size=5000, required_fields=["text"], item_name="keywords")
+        if error:
+            return error_response(error)
 
         seen = set()
         unique_keywords = []
@@ -131,11 +130,14 @@ def add_keywords(
                 criterion.cpc_bid_micros = to_micros(cpc_bid)
             operations.append(operation)
 
-        response = service.mutate_ad_group_criteria(customer_id=cid, operations=operations)
+        response = service.mutate_ad_group_criteria(customer_id=cid, operations=operations, partial_failure=True)
+        partial_errors = process_partial_failure(response)
         results = [r.resource_name for r in response.results]
-
+        result_data = {"added": len(results), "resource_names": results}
+        if partial_errors:
+            result_data["partial_errors"] = partial_errors
         return success_response(
-            {"added": len(results), "resource_names": results},
+            result_data,
             message=f"{len(results)} keywords added to ad group {ad_group_id}",
         )
     except Exception as e:
@@ -234,12 +236,9 @@ def add_negative_keywords_to_campaign(
     try:
         cid = resolve_customer_id(customer_id)
 
-        if len(keywords) > 5000:
-            return error_response(f"Maximum 5000 keywords per call, received: {len(keywords)}")
-
-        for kw in keywords:
-            if "text" not in kw:
-                return error_response("Each keyword must have a 'text' field")
+        error = validate_batch(keywords, max_size=5000, required_fields=["text"], item_name="keywords")
+        if error:
+            return error_response(error)
 
         seen = set()
         unique_keywords = []
@@ -287,8 +286,9 @@ def add_negative_keywords_to_shared_set(
     try:
         cid = resolve_customer_id(customer_id)
 
-        if len(keywords) > 5000:
-            return error_response(f"Maximum 5000 keywords per call, received: {len(keywords)}")
+        error = validate_batch(keywords, max_size=5000, item_name="keywords")
+        if error:
+            return error_response(error)
 
         unique_keywords = list(dict.fromkeys(keywords))
 

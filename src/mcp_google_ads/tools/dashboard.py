@@ -131,6 +131,7 @@ def mcc_performance_summary(
 
         return success_response(result)
     except Exception as e:
+        logger.error("Failed to get MCC performance summary: %s", e, exc_info=True)
         return error_response(f"Failed to get MCC performance summary: {e}")
 
 
@@ -271,4 +272,5 @@ def account_dashboard(
             "pending_recommendations": rec_count,
         })
     except Exception as e:
+        logger.error("Failed to get account dashboard: %s", e, exc_info=True)
         return error_response(f"Failed to get account dashboard: {e}")
