@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import sys
 
+from . import __version__
 from .coordinator import mcp
 
 # Import all tool modules so they register with the coordinator
@@ -19,6 +20,7 @@ from .tools import (  # noqa: F401
     campaign_types,
     campaigns,
     conversions,
+    dashboard,
     experiments,
     extensions,
     keywords,
@@ -39,7 +41,7 @@ def main() -> None:
         stream=sys.stderr,
     )
     logger = logging.getLogger(__name__)
-    logger.info("Starting Google Ads MCP Server v0.1.0")
+    logger.info("Starting Google Ads MCP Server v%s", __version__)
     mcp.run()
 
 

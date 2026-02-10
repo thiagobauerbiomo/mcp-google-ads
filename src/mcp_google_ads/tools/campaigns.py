@@ -10,9 +10,12 @@ from ..auth import get_client, get_service
 from ..coordinator import mcp
 from ..utils import (
     error_response,
+    format_micros,
     resolve_customer_id,
     success_response,
     to_micros,
+    validate_numeric_id,
+    validate_status,
 )
 
 
@@ -29,6 +32,12 @@ def list_campaigns(
     try:
         cid = resolve_customer_id(customer_id)
         service = get_service("GoogleAdsService")
+
+        where = ""
+        if status_filter:
+            safe_status = validate_status(status_filter)
+            where = f"WHERE campaign.status = '{safe_status}'"
+
         query = f"""
             SELECT
                 campaign.id,
@@ -38,7 +47,7 @@ def list_campaigns(
                 campaign.bidding_strategy_type,
                 campaign_budget.amount_micros
             FROM campaign
-            {"WHERE campaign.status = '" + status_filter + "'" if status_filter else ""}
+            {where}
             ORDER BY campaign.name ASC
             LIMIT {limit}
         """
@@ -52,7 +61,7 @@ def list_campaigns(
                 "channel_type": row.campaign.advertising_channel_type.name,
                 "bidding_strategy": row.campaign.bidding_strategy_type.name,
                 "budget_micros": row.campaign_budget.amount_micros,
-                "budget": row.campaign_budget.amount_micros / 1_000_000 if row.campaign_budget.amount_micros else None,
+                "budget": format_micros(row.campaign_budget.amount_micros),
             })
         return success_response({"campaigns": campaigns, "count": len(campaigns)})
     except Exception as e:
@@ -67,6 +76,7 @@ def get_campaign(
     """Get detailed information about a specific campaign."""
     try:
         cid = resolve_customer_id(customer_id)
+        safe_id = validate_numeric_id(campaign_id, "campaign_id")
         service = get_service("GoogleAdsService")
         query = f"""
             SELECT
@@ -86,7 +96,7 @@ def get_campaign(
                 campaign.geo_target_type_setting.positive_geo_target_type,
                 campaign.url_custom_parameters
             FROM campaign
-            WHERE campaign.id = {campaign_id}
+            WHERE campaign.id = {safe_id}
         """
         response = service.search(customer_id=cid, query=query)
         for row in response:
@@ -98,7 +108,7 @@ def get_campaign(
                 "channel_sub_type": row.campaign.advertising_channel_sub_type.name,
                 "bidding_strategy_type": row.campaign.bidding_strategy_type.name,
                 "budget_micros": row.campaign_budget.amount_micros,
-                "budget": row.campaign_budget.amount_micros / 1_000_000 if row.campaign_budget.amount_micros else None,
+                "budget": format_micros(row.campaign_budget.amount_micros),
                 "budget_delivery": row.campaign_budget.delivery_method.name,
                 "serving_status": row.campaign.serving_status.name,
                 "target_google_search": row.campaign.network_settings.target_google_search,
@@ -259,13 +269,14 @@ def set_campaign_status(
     """
     try:
         cid = resolve_customer_id(customer_id)
+        safe_status = validate_status(status)
         client = get_client()
         service = get_service("CampaignService")
 
         campaign_op = client.get_type("CampaignOperation")
         campaign = campaign_op.update
         campaign.resource_name = f"customers/{cid}/campaigns/{campaign_id}"
-        campaign.status = getattr(client.enums.CampaignStatusEnum, status)
+        campaign.status = getattr(client.enums.CampaignStatusEnum, safe_status)
 
         client.copy_from(
             campaign_op.update_mask,
@@ -274,8 +285,8 @@ def set_campaign_status(
 
         response = service.mutate_campaigns(customer_id=cid, operations=[campaign_op])
         return success_response(
-            {"resource_name": response.results[0].resource_name, "new_status": status},
-            message=f"Campaign {campaign_id} set to {status}",
+            {"resource_name": response.results[0].resource_name, "new_status": safe_status},
+            message=f"Campaign {campaign_id} set to {safe_status}",
         )
     except Exception as e:
         return error_response(f"Failed to set campaign status: {e}")
@@ -314,6 +325,12 @@ def list_campaign_labels(
     try:
         cid = resolve_customer_id(customer_id)
         service = get_service("GoogleAdsService")
+
+        where = ""
+        if campaign_id:
+            safe_id = validate_numeric_id(campaign_id, "campaign_id")
+            where = f"WHERE campaign.id = {safe_id}"
+
         query = f"""
             SELECT
                 campaign_label.campaign,
@@ -323,7 +340,7 @@ def list_campaign_labels(
                 campaign.id,
                 campaign.name
             FROM campaign_label
-            {"WHERE campaign.id = " + campaign_id if campaign_id else ""}
+            {where}
             LIMIT {limit}
         """
         response = service.search(customer_id=cid, query=query)

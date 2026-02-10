@@ -6,17 +6,32 @@ from typing import Annotated
 
 from ..auth import get_service
 from ..coordinator import mcp
-from ..utils import error_response, format_micros, resolve_customer_id, success_response
+from ..utils import (
+    build_date_clause,
+    error_response,
+    format_micros,
+    resolve_customer_id,
+    success_response,
+    validate_numeric_id,
+)
 
 
-def _default_date_range() -> str:
-    return "DURING LAST_30_DAYS"
+def _build_where(
+    conditions: list[str],
+    date_range: str | None,
+    start_date: str | None,
+    end_date: str | None,
+    default_range: str = "LAST_30_DAYS",
+) -> str:
+    """Build a complete WHERE + DURING clause for GAQL reports."""
+    date = build_date_clause(date_range, start_date, end_date, default=default_range)
 
+    if date.startswith("segments.date"):
+        conditions.append(date)
+        return "WHERE " + " AND ".join(conditions) if conditions else ""
 
-def _date_clause(date_range: str | None, start_date: str | None, end_date: str | None) -> str:
-    if start_date and end_date:
-        return f"WHERE segments.date BETWEEN '{start_date}' AND '{end_date}'"
-    return _default_date_range() if not date_range else f"DURING {date_range}"
+    where = "WHERE " + " AND ".join(conditions) if conditions else ""
+    return f"{where} {date}" if where else date
 
 
 @mcp.tool()
@@ -33,23 +48,11 @@ def campaign_performance_report(
         cid = resolve_customer_id(customer_id)
         service = get_service("GoogleAdsService")
 
-        conditions = []
+        conditions = ["metrics.impressions > 0"]
         if campaign_id:
-            conditions.append(f"campaign.id = {campaign_id}")
-        if start_date and end_date:
-            conditions.append(f"segments.date BETWEEN '{start_date}' AND '{end_date}'")
+            conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
 
-        date_part = ""
-        if not start_date:
-            date_part = _default_date_range() if not date_range else f"DURING {date_range}"
-
-        where = ""
-        if conditions:
-            where = "WHERE " + " AND ".join(conditions)
-            if date_part:
-                where += f" AND metrics.impressions > 0 {date_part}"
-        elif date_part:
-            where = f"WHERE metrics.impressions > 0 {date_part}"
+        where = _build_where(conditions, date_range, start_date, end_date)
 
         query = f"""
             SELECT
@@ -95,14 +98,21 @@ def campaign_performance_report(
 def ad_group_performance_report(
     customer_id: Annotated[str, "The Google Ads customer ID"],
     campaign_id: Annotated[str | None, "Filter by campaign ID"] = None,
-    date_range: Annotated[str, "Predefined range"] = "LAST_30_DAYS",
+    date_range: Annotated[str | None, "Predefined range: TODAY, YESTERDAY, LAST_7_DAYS, LAST_30_DAYS, THIS_MONTH, LAST_MONTH"] = None,
+    start_date: Annotated[str | None, "Start date YYYY-MM-DD (overrides date_range)"] = None,
+    end_date: Annotated[str | None, "End date YYYY-MM-DD"] = None,
     limit: Annotated[int, "Maximum results"] = 50,
 ) -> str:
     """Get ad group performance metrics."""
     try:
         cid = resolve_customer_id(customer_id)
         service = get_service("GoogleAdsService")
-        campaign_filter = f"AND campaign.id = {campaign_id}" if campaign_id else ""
+
+        conditions = ["metrics.impressions > 0"]
+        if campaign_id:
+            conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
+
+        where = _build_where(conditions, date_range, start_date, end_date)
 
         query = f"""
             SELECT
@@ -118,8 +128,7 @@ def ad_group_performance_report(
                 metrics.ctr,
                 metrics.average_cpc
             FROM ad_group
-            WHERE metrics.impressions > 0 {campaign_filter}
-            DURING {date_range}
+            {where}
             ORDER BY metrics.cost_micros DESC
             LIMIT {limit}
         """
@@ -149,19 +158,23 @@ def ad_performance_report(
     customer_id: Annotated[str, "The Google Ads customer ID"],
     campaign_id: Annotated[str | None, "Filter by campaign ID"] = None,
     ad_group_id: Annotated[str | None, "Filter by ad group ID"] = None,
-    date_range: Annotated[str, "Predefined range"] = "LAST_30_DAYS",
+    date_range: Annotated[str | None, "Predefined range: TODAY, YESTERDAY, LAST_7_DAYS, LAST_30_DAYS, THIS_MONTH, LAST_MONTH"] = None,
+    start_date: Annotated[str | None, "Start date YYYY-MM-DD (overrides date_range)"] = None,
+    end_date: Annotated[str | None, "End date YYYY-MM-DD"] = None,
     limit: Annotated[int, "Maximum results"] = 50,
 ) -> str:
     """Get ad-level performance metrics including ad strength."""
     try:
         cid = resolve_customer_id(customer_id)
         service = get_service("GoogleAdsService")
+
         conditions = ["metrics.impressions > 0"]
         if campaign_id:
-            conditions.append(f"campaign.id = {campaign_id}")
+            conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
         if ad_group_id:
-            conditions.append(f"ad_group.id = {ad_group_id}")
-        where = "WHERE " + " AND ".join(conditions)
+            conditions.append(f"ad_group.id = {validate_numeric_id(ad_group_id, 'ad_group_id')}")
+
+        where = _build_where(conditions, date_range, start_date, end_date)
 
         query = f"""
             SELECT
@@ -181,7 +194,6 @@ def ad_performance_report(
                 metrics.average_cpc
             FROM ad_group_ad
             {where}
-            DURING {date_range}
             ORDER BY metrics.cost_micros DESC
             LIMIT {limit}
         """
@@ -212,19 +224,23 @@ def keyword_performance_report(
     customer_id: Annotated[str, "The Google Ads customer ID"],
     campaign_id: Annotated[str | None, "Filter by campaign ID"] = None,
     ad_group_id: Annotated[str | None, "Filter by ad group ID"] = None,
-    date_range: Annotated[str, "Predefined range"] = "LAST_30_DAYS",
+    date_range: Annotated[str | None, "Predefined range: TODAY, YESTERDAY, LAST_7_DAYS, LAST_30_DAYS, THIS_MONTH, LAST_MONTH"] = None,
+    start_date: Annotated[str | None, "Start date YYYY-MM-DD (overrides date_range)"] = None,
+    end_date: Annotated[str | None, "End date YYYY-MM-DD"] = None,
     limit: Annotated[int, "Maximum results"] = 100,
 ) -> str:
     """Get keyword performance with quality score, CTR, and conversion data."""
     try:
         cid = resolve_customer_id(customer_id)
         service = get_service("GoogleAdsService")
+
         conditions = ["ad_group_criterion.type = 'KEYWORD'", "metrics.impressions > 0"]
         if campaign_id:
-            conditions.append(f"campaign.id = {campaign_id}")
+            conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
         if ad_group_id:
-            conditions.append(f"ad_group.id = {ad_group_id}")
-        where = "WHERE " + " AND ".join(conditions)
+            conditions.append(f"ad_group.id = {validate_numeric_id(ad_group_id, 'ad_group_id')}")
+
+        where = _build_where(conditions, date_range, start_date, end_date)
 
         query = f"""
             SELECT
@@ -243,7 +259,6 @@ def keyword_performance_report(
                 metrics.average_cpc
             FROM keyword_view
             {where}
-            DURING {date_range}
             ORDER BY metrics.cost_micros DESC
             LIMIT {limit}
         """
@@ -273,14 +288,21 @@ def keyword_performance_report(
 def search_terms_report(
     customer_id: Annotated[str, "The Google Ads customer ID"],
     campaign_id: Annotated[str | None, "Filter by campaign ID"] = None,
-    date_range: Annotated[str, "Predefined range"] = "LAST_30_DAYS",
+    date_range: Annotated[str | None, "Predefined range: TODAY, YESTERDAY, LAST_7_DAYS, LAST_30_DAYS, THIS_MONTH, LAST_MONTH"] = None,
+    start_date: Annotated[str | None, "Start date YYYY-MM-DD (overrides date_range)"] = None,
+    end_date: Annotated[str | None, "End date YYYY-MM-DD"] = None,
     limit: Annotated[int, "Maximum results"] = 100,
 ) -> str:
     """Get search terms that triggered ads. Essential for finding negative keyword opportunities."""
     try:
         cid = resolve_customer_id(customer_id)
         service = get_service("GoogleAdsService")
-        campaign_filter = f"AND campaign.id = {campaign_id}" if campaign_id else ""
+
+        conditions = ["metrics.impressions > 0"]
+        if campaign_id:
+            conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
+
+        where = _build_where(conditions, date_range, start_date, end_date)
 
         query = f"""
             SELECT
@@ -296,8 +318,7 @@ def search_terms_report(
                 metrics.conversions,
                 metrics.ctr
             FROM search_term_view
-            WHERE metrics.impressions > 0 {campaign_filter}
-            DURING {date_range}
+            {where}
             ORDER BY metrics.impressions DESC
             LIMIT {limit}
         """
@@ -326,14 +347,21 @@ def search_terms_report(
 def audience_performance_report(
     customer_id: Annotated[str, "The Google Ads customer ID"],
     campaign_id: Annotated[str | None, "Filter by campaign ID"] = None,
-    date_range: Annotated[str, "Predefined range"] = "LAST_30_DAYS",
+    date_range: Annotated[str | None, "Predefined range"] = None,
+    start_date: Annotated[str | None, "Start date YYYY-MM-DD"] = None,
+    end_date: Annotated[str | None, "End date YYYY-MM-DD"] = None,
     limit: Annotated[int, "Maximum results"] = 50,
 ) -> str:
     """Get audience segment performance metrics."""
     try:
         cid = resolve_customer_id(customer_id)
         service = get_service("GoogleAdsService")
-        campaign_filter = f"AND campaign.id = {campaign_id}" if campaign_id else ""
+
+        conditions = ["metrics.impressions > 0"]
+        if campaign_id:
+            conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
+
+        where = _build_where(conditions, date_range, start_date, end_date)
 
         query = f"""
             SELECT
@@ -347,8 +375,7 @@ def audience_performance_report(
                 metrics.ctr,
                 metrics.average_cpc
             FROM campaign_audience_view
-            WHERE metrics.impressions > 0 {campaign_filter}
-            DURING {date_range}
+            {where}
             ORDER BY metrics.impressions DESC
             LIMIT {limit}
         """
@@ -375,14 +402,21 @@ def audience_performance_report(
 def geographic_performance_report(
     customer_id: Annotated[str, "The Google Ads customer ID"],
     campaign_id: Annotated[str | None, "Filter by campaign ID"] = None,
-    date_range: Annotated[str, "Predefined range"] = "LAST_30_DAYS",
+    date_range: Annotated[str | None, "Predefined range"] = None,
+    start_date: Annotated[str | None, "Start date YYYY-MM-DD"] = None,
+    end_date: Annotated[str | None, "End date YYYY-MM-DD"] = None,
     limit: Annotated[int, "Maximum results"] = 50,
 ) -> str:
     """Get geographic performance by country, region, and city."""
     try:
         cid = resolve_customer_id(customer_id)
         service = get_service("GoogleAdsService")
-        campaign_filter = f"AND campaign.id = {campaign_id}" if campaign_id else ""
+
+        conditions = ["metrics.impressions > 0"]
+        if campaign_id:
+            conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
+
+        where = _build_where(conditions, date_range, start_date, end_date)
 
         query = f"""
             SELECT
@@ -396,8 +430,7 @@ def geographic_performance_report(
                 metrics.conversions,
                 metrics.ctr
             FROM geographic_view
-            WHERE metrics.impressions > 0 {campaign_filter}
-            DURING {date_range}
+            {where}
             ORDER BY metrics.impressions DESC
             LIMIT {limit}
         """
@@ -423,13 +456,17 @@ def geographic_performance_report(
 @mcp.tool()
 def change_history_report(
     customer_id: Annotated[str, "The Google Ads customer ID"],
-    date_range: Annotated[str, "Predefined range"] = "LAST_7_DAYS",
+    date_range: Annotated[str | None, "Predefined range"] = None,
+    start_date: Annotated[str | None, "Start date YYYY-MM-DD"] = None,
+    end_date: Annotated[str | None, "End date YYYY-MM-DD"] = None,
     limit: Annotated[int, "Maximum results"] = 50,
 ) -> str:
     """Get recent change history showing who made what changes and when."""
     try:
         cid = resolve_customer_id(customer_id)
         service = get_service("GoogleAdsService")
+
+        where = _build_where([], date_range, start_date, end_date, default_range="LAST_7_DAYS")
 
         query = f"""
             SELECT
@@ -441,7 +478,7 @@ def change_history_report(
                 change_event.client_type,
                 change_event.changed_fields
             FROM change_event
-            DURING {date_range}
+            {where}
             ORDER BY change_event.change_date_time DESC
             LIMIT {limit}
         """
@@ -465,14 +502,21 @@ def change_history_report(
 def device_performance_report(
     customer_id: Annotated[str, "The Google Ads customer ID"],
     campaign_id: Annotated[str | None, "Filter by campaign ID"] = None,
-    date_range: Annotated[str, "Predefined range"] = "LAST_30_DAYS",
+    date_range: Annotated[str | None, "Predefined range"] = None,
+    start_date: Annotated[str | None, "Start date YYYY-MM-DD"] = None,
+    end_date: Annotated[str | None, "End date YYYY-MM-DD"] = None,
     limit: Annotated[int, "Maximum results"] = 50,
 ) -> str:
     """Get performance metrics segmented by device (mobile, desktop, tablet)."""
     try:
         cid = resolve_customer_id(customer_id)
         service = get_service("GoogleAdsService")
-        campaign_filter = f"AND campaign.id = {campaign_id}" if campaign_id else ""
+
+        conditions = ["metrics.impressions > 0"]
+        if campaign_id:
+            conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
+
+        where = _build_where(conditions, date_range, start_date, end_date)
 
         query = f"""
             SELECT
@@ -487,8 +531,7 @@ def device_performance_report(
                 metrics.average_cpc,
                 metrics.cost_per_conversion
             FROM campaign
-            WHERE metrics.impressions > 0 {campaign_filter}
-            DURING {date_range}
+            {where}
             ORDER BY metrics.cost_micros DESC
             LIMIT {limit}
         """
@@ -516,7 +559,9 @@ def device_performance_report(
 def hourly_performance_report(
     customer_id: Annotated[str, "The Google Ads customer ID"],
     campaign_id: Annotated[str | None, "Filter by campaign ID"] = None,
-    date_range: Annotated[str, "Predefined range"] = "LAST_7_DAYS",
+    date_range: Annotated[str | None, "Predefined range"] = None,
+    start_date: Annotated[str | None, "Start date YYYY-MM-DD"] = None,
+    end_date: Annotated[str | None, "End date YYYY-MM-DD"] = None,
     limit: Annotated[int, "Maximum results"] = 200,
 ) -> str:
     """Get performance metrics segmented by hour and day of week.
@@ -526,7 +571,12 @@ def hourly_performance_report(
     try:
         cid = resolve_customer_id(customer_id)
         service = get_service("GoogleAdsService")
-        campaign_filter = f"AND campaign.id = {campaign_id}" if campaign_id else ""
+
+        conditions = ["metrics.impressions > 0"]
+        if campaign_id:
+            conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
+
+        where = _build_where(conditions, date_range, start_date, end_date, default_range="LAST_7_DAYS")
 
         query = f"""
             SELECT
@@ -540,8 +590,7 @@ def hourly_performance_report(
                 metrics.conversions,
                 metrics.ctr
             FROM campaign
-            WHERE metrics.impressions > 0 {campaign_filter}
-            DURING {date_range}
+            {where}
             ORDER BY segments.day_of_week, segments.hour
             LIMIT {limit}
         """
@@ -568,7 +617,9 @@ def hourly_performance_report(
 def age_gender_performance_report(
     customer_id: Annotated[str, "The Google Ads customer ID"],
     campaign_id: Annotated[str | None, "Filter by campaign ID"] = None,
-    date_range: Annotated[str, "Predefined range"] = "LAST_30_DAYS",
+    date_range: Annotated[str | None, "Predefined range"] = None,
+    start_date: Annotated[str | None, "Start date YYYY-MM-DD"] = None,
+    end_date: Annotated[str | None, "End date YYYY-MM-DD"] = None,
     limit: Annotated[int, "Maximum results"] = 50,
 ) -> str:
     """Get performance metrics by age range and gender demographics.
@@ -578,7 +629,12 @@ def age_gender_performance_report(
     try:
         cid = resolve_customer_id(customer_id)
         service = get_service("GoogleAdsService")
-        campaign_filter = f"AND campaign.id = {campaign_id}" if campaign_id else ""
+
+        conditions = ["metrics.impressions > 0"]
+        if campaign_id:
+            conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
+
+        where = _build_where(conditions, date_range, start_date, end_date)
 
         age_query = f"""
             SELECT
@@ -591,8 +647,7 @@ def age_gender_performance_report(
                 metrics.conversions,
                 metrics.ctr
             FROM age_range_view
-            WHERE metrics.impressions > 0 {campaign_filter}
-            DURING {date_range}
+            {where}
             ORDER BY metrics.impressions DESC
             LIMIT {limit}
         """
@@ -621,8 +676,7 @@ def age_gender_performance_report(
                 metrics.conversions,
                 metrics.ctr
             FROM gender_view
-            WHERE metrics.impressions > 0 {campaign_filter}
-            DURING {date_range}
+            {where}
             ORDER BY metrics.impressions DESC
             LIMIT {limit}
         """
@@ -654,7 +708,9 @@ def age_gender_performance_report(
 def placement_report(
     customer_id: Annotated[str, "The Google Ads customer ID"],
     campaign_id: Annotated[str | None, "Filter by campaign ID"] = None,
-    date_range: Annotated[str, "Predefined range"] = "LAST_30_DAYS",
+    date_range: Annotated[str | None, "Predefined range"] = None,
+    start_date: Annotated[str | None, "Start date YYYY-MM-DD"] = None,
+    end_date: Annotated[str | None, "End date YYYY-MM-DD"] = None,
     limit: Annotated[int, "Maximum results"] = 100,
 ) -> str:
     """Get placement performance for Display/Video campaigns.
@@ -664,7 +720,12 @@ def placement_report(
     try:
         cid = resolve_customer_id(customer_id)
         service = get_service("GoogleAdsService")
-        campaign_filter = f"AND campaign.id = {campaign_id}" if campaign_id else ""
+
+        conditions = ["metrics.impressions > 0"]
+        if campaign_id:
+            conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
+
+        where = _build_where(conditions, date_range, start_date, end_date)
 
         query = f"""
             SELECT
@@ -679,8 +740,7 @@ def placement_report(
                 metrics.conversions,
                 metrics.ctr
             FROM detail_placement_view
-            WHERE metrics.impressions > 0 {campaign_filter}
-            DURING {date_range}
+            {where}
             ORDER BY metrics.impressions DESC
             LIMIT {limit}
         """
@@ -717,7 +777,15 @@ def quality_score_report(
     try:
         cid = resolve_customer_id(customer_id)
         service = get_service("GoogleAdsService")
-        campaign_filter = f"AND campaign.id = {campaign_id}" if campaign_id else ""
+
+        conditions = [
+            "ad_group_criterion.type = 'KEYWORD'",
+            "ad_group_criterion.status = 'ENABLED'",
+        ]
+        if campaign_id:
+            conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
+
+        where = "WHERE " + " AND ".join(conditions)
 
         query = f"""
             SELECT
@@ -732,9 +800,7 @@ def quality_score_report(
                 campaign.id,
                 campaign.name
             FROM ad_group_criterion
-            WHERE ad_group_criterion.type = 'KEYWORD'
-                AND ad_group_criterion.status = 'ENABLED'
-                {campaign_filter}
+            {where}
             ORDER BY ad_group_criterion.quality_info.quality_score ASC
             LIMIT {limit}
         """
@@ -774,7 +840,10 @@ def comparison_report(
     try:
         cid = resolve_customer_id(customer_id)
         service = get_service("GoogleAdsService")
-        campaign_filter = f"AND campaign.id = {campaign_id}" if campaign_id else ""
+
+        campaign_filter = ""
+        if campaign_id:
+            campaign_filter = f"AND campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}"
 
         def _run_query(start: str, end: str) -> dict:
             query = f"""

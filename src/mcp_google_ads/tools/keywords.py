@@ -1,4 +1,4 @@
-"""Keyword management tools (8 tools)."""
+"""Keyword management tools (9 tools)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from google.api_core import protobuf_helpers
 
 from ..auth import get_client, get_service
 from ..coordinator import mcp
-from ..utils import error_response, resolve_customer_id, success_response, to_micros
+from ..utils import error_response, format_micros, resolve_customer_id, success_response, to_micros, validate_numeric_id, validate_status
 
 
 @mcp.tool()
@@ -25,11 +25,11 @@ def list_keywords(
         service = get_service("GoogleAdsService")
         conditions = ["ad_group_criterion.type = 'KEYWORD'"]
         if ad_group_id:
-            conditions.append(f"ad_group.id = {ad_group_id}")
+            conditions.append(f"ad_group.id = {validate_numeric_id(ad_group_id, 'ad_group_id')}")
         if campaign_id:
-            conditions.append(f"campaign.id = {campaign_id}")
+            conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
         if status_filter:
-            conditions.append(f"ad_group_criterion.status = '{status_filter}'")
+            conditions.append(f"ad_group_criterion.status = '{validate_status(status_filter)}'")
         where = "WHERE " + " AND ".join(conditions)
 
         query = f"""
@@ -58,7 +58,7 @@ def list_keywords(
                 "keyword": row.ad_group_criterion.keyword.text,
                 "match_type": row.ad_group_criterion.keyword.match_type.name,
                 "status": row.ad_group_criterion.status.name,
-                "cpc_bid": row.ad_group_criterion.cpc_bid_micros / 1_000_000 if row.ad_group_criterion.cpc_bid_micros else None,
+                "cpc_bid": format_micros(row.ad_group_criterion.cpc_bid_micros),
                 "quality_score": row.ad_group_criterion.quality_info.quality_score,
                 "ad_group_id": str(row.ad_group.id),
                 "campaign_id": str(row.campaign.id),
@@ -351,3 +351,50 @@ def get_keyword_forecast(
         return success_response({"forecasts": forecasts})
     except Exception as e:
         return error_response(f"Failed to get keyword forecast: {e}")
+
+
+@mcp.tool()
+def list_negative_keywords(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    campaign_id: Annotated[str | None, "Filter by campaign ID"] = None,
+    limit: Annotated[int, "Maximum results"] = 200,
+) -> str:
+    """List negative keywords at the campaign level.
+
+    Shows all negative keywords that prevent ads from showing for certain search terms.
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        service = get_service("GoogleAdsService")
+
+        conditions = ["campaign_criterion.negative = true", "campaign_criterion.type = 'KEYWORD'"]
+        if campaign_id:
+            conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
+
+        where = "WHERE " + " AND ".join(conditions)
+
+        query = f"""
+            SELECT
+                campaign_criterion.criterion_id,
+                campaign_criterion.keyword.text,
+                campaign_criterion.keyword.match_type,
+                campaign.id,
+                campaign.name
+            FROM campaign_criterion
+            {where}
+            ORDER BY campaign_criterion.keyword.text ASC
+            LIMIT {limit}
+        """
+        response = service.search(customer_id=cid, query=query)
+        negatives = []
+        for row in response:
+            negatives.append({
+                "criterion_id": str(row.campaign_criterion.criterion_id),
+                "keyword": row.campaign_criterion.keyword.text,
+                "match_type": row.campaign_criterion.keyword.match_type.name,
+                "campaign_id": str(row.campaign.id),
+                "campaign_name": row.campaign.name,
+            })
+        return success_response({"negative_keywords": negatives, "count": len(negatives)})
+    except Exception as e:
+        return error_response(f"Failed to list negative keywords: {e}")

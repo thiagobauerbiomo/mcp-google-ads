@@ -26,8 +26,7 @@ def list_account_links(
             SELECT
                 account_link.account_link_id,
                 account_link.status,
-                account_link.type,
-                account_link.linked_account_type
+                account_link.resource_name
             FROM account_link
             LIMIT {limit}
         """
@@ -37,8 +36,7 @@ def list_account_links(
             links.append({
                 "account_link_id": str(row.account_link.account_link_id),
                 "status": row.account_link.status.name,
-                "type": row.account_link.type_.name,
-                "linked_account_type": row.account_link.linked_account_type.name,
+                "resource_name": row.account_link.resource_name,
             })
         return success_response({"account_links": links, "count": len(links)})
     except Exception as e:

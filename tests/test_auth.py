@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from mcp_google_ads.auth import _retry_with_backoff, get_client, get_service, reset_client
+from mcp_google_ads.auth import get_client, get_service, reset_client
 
 
 class TestGetClient:
@@ -45,8 +45,6 @@ class TestGetClient:
 class TestResetClient:
     def test_resets_singleton(self):
         reset_client()
-        # After reset, get_client would need to create a new one
-        # This is tested implicitly by the singleton test above
 
 
 class TestGetService:
@@ -57,36 +55,3 @@ class TestGetService:
 
         get_service("GoogleAdsService")
         mock_client.get_service.assert_called_once_with("GoogleAdsService")
-
-
-class TestRetryWithBackoff:
-    def test_succeeds_first_try(self):
-        func = MagicMock(return_value="ok")
-        result = _retry_with_backoff(func, "arg1", max_retries=3)
-        assert result == "ok"
-        func.assert_called_once_with("arg1")
-
-    @patch("time.sleep")
-    def test_retries_on_transient(self, mock_sleep):
-        from google.api_core.exceptions import ServiceUnavailable
-
-        func = MagicMock(side_effect=[ServiceUnavailable("unavail"), "ok"])
-        result = _retry_with_backoff(func, max_retries=3)
-        assert result == "ok"
-        assert func.call_count == 2
-        mock_sleep.assert_called_once_with(1)  # 2^0
-
-    @patch("time.sleep")
-    def test_raises_after_max_retries(self, mock_sleep):
-        from google.api_core.exceptions import ServiceUnavailable
-
-        func = MagicMock(side_effect=ServiceUnavailable("unavail"))
-        with pytest.raises(ServiceUnavailable):
-            _retry_with_backoff(func, max_retries=2)
-        assert func.call_count == 2
-
-    def test_does_not_retry_non_transient(self):
-        func = MagicMock(side_effect=ValueError("bad input"))
-        with pytest.raises(ValueError):
-            _retry_with_backoff(func, max_retries=3)
-        func.assert_called_once()

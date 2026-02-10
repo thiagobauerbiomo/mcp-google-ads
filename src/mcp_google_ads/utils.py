@@ -3,15 +3,13 @@
 from __future__ import annotations
 
 import json
-import logging
+import re
 from typing import Any
 
 from google.protobuf.json_format import MessageToDict
 
 from .auth import get_config
 from .exceptions import GoogleAdsMCPError
-
-logger = logging.getLogger(__name__)
 
 
 def resolve_customer_id(customer_id: str | None = None) -> str:
@@ -53,16 +51,6 @@ def error_response(error: str, details: Any = None) -> str:
     return json.dumps(result, ensure_ascii=False, default=str)
 
 
-def parse_google_ads_error(error: Exception) -> str:
-    """Extract a readable error message from a GoogleAdsException."""
-    if hasattr(error, "failure"):
-        messages = []
-        for err in error.failure.errors:
-            messages.append(f"{err.error_code}: {err.message}")
-        return "; ".join(messages)
-    return str(error)
-
-
 def format_micros(micros: int | None) -> float | None:
     """Convert micros to standard currency unit."""
     if micros is None:
@@ -75,54 +63,69 @@ def to_micros(amount: float) -> int:
     return int(amount * 1_000_000)
 
 
-def build_resource_name(resource_type: str, customer_id: str, resource_id: str) -> str:
-    """Build a Google Ads resource name string."""
-    return f"customers/{customer_id}/{resource_type}/{resource_id}"
+# --- Validação GAQL ---
+
+_VALID_STATUSES = {"ENABLED", "PAUSED", "REMOVED"}
+
+_VALID_DATE_RANGES = {
+    "TODAY", "YESTERDAY", "LAST_7_DAYS", "LAST_14_DAYS", "LAST_30_DAYS",
+    "THIS_MONTH", "LAST_MONTH", "THIS_QUARTER", "LAST_QUARTER",
+    "THIS_YEAR", "LAST_YEAR",
+}
+
+_DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+_NUMERIC_PATTERN = re.compile(r"^\d+$")
 
 
-def paginate_search(service, customer_id: str, query: str, page_size: int = 1000) -> list:
-    """Execute a GAQL query with explicit pagination, collecting all results.
+def validate_status(status: str) -> str:
+    """Validate and return a GAQL-safe status value."""
+    upper = status.upper()
+    if upper not in _VALID_STATUSES:
+        raise GoogleAdsMCPError(f"Status inválido: '{status}'. Use: {_VALID_STATUSES}")
+    return upper
 
-    Useful for large result sets that exceed the default page size.
+
+def validate_date_range(date_range: str) -> str:
+    """Validate a predefined GAQL date range."""
+    upper = date_range.upper()
+    if upper not in _VALID_DATE_RANGES:
+        raise GoogleAdsMCPError(f"Date range inválido: '{date_range}'. Use: {_VALID_DATE_RANGES}")
+    return upper
+
+
+def validate_date(date_str: str) -> str:
+    """Validate a YYYY-MM-DD date string."""
+    if not _DATE_PATTERN.match(date_str):
+        raise GoogleAdsMCPError(f"Data inválida: '{date_str}'. Formato esperado: YYYY-MM-DD")
+    return date_str
+
+
+def validate_numeric_id(value: str, field_name: str = "ID") -> str:
+    """Validate that a value is a numeric ID (safe for GAQL)."""
+    clean = value.replace("-", "")
+    if not _NUMERIC_PATTERN.match(clean):
+        raise GoogleAdsMCPError(f"{field_name} inválido: '{value}'. Deve ser numérico.")
+    return clean
+
+
+def build_date_clause(
+    date_range: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    default: str = "LAST_30_DAYS",
+) -> str:
+    """Build a GAQL date clause (WHERE or DURING) from parameters.
+
+    Returns a string like:
+      "segments.date BETWEEN '2024-01-01' AND '2024-01-31'"
+    or:
+      "DURING LAST_30_DAYS"
     """
-    all_rows = []
-    request = {
-        "customer_id": customer_id,
-        "query": query,
-        "page_size": page_size,
-    }
-    response = service.search(request=request)
-    for row in response:
-        all_rows.append(row)
-    return all_rows
-
-
-def log_tool_call(tool_name: str, customer_id: str, **params) -> None:
-    """Log a structured tool call for debugging and auditing."""
-    filtered_params = {k: v for k, v in params.items() if v is not None}
-    logger.info(
-        "Tool call: %s | customer: %s | params: %s",
-        tool_name,
-        customer_id,
-        filtered_params,
-    )
-
-
-def log_api_error(tool_name: str, error: Exception, customer_id: str) -> None:
-    """Log a structured API error."""
-    logger.error(
-        "API error in %s | customer: %s | error: %s",
-        tool_name,
-        customer_id,
-        error,
-    )
-
-
-def handle_rate_limit(error: Exception) -> bool:
-    """Check if an error is a rate limit / quota exceeded error.
-
-    Returns True if the error is a quota/rate limit error, False otherwise.
-    """
-    error_str = str(error).lower()
-    quota_indicators = ["quota", "rate limit", "resource_exhausted", "too many requests"]
-    return any(indicator in error_str for indicator in quota_indicators)
+    if start_date and end_date:
+        s = validate_date(start_date)
+        e = validate_date(end_date)
+        return f"segments.date BETWEEN '{s}' AND '{e}'"
+    if date_range:
+        return f"DURING {validate_date_range(date_range)}"
+    return f"DURING {validate_date_range(default)}"

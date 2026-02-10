@@ -8,7 +8,7 @@ from google.api_core import protobuf_helpers
 
 from ..auth import get_client, get_service
 from ..coordinator import mcp
-from ..utils import error_response, resolve_customer_id, success_response, to_micros
+from ..utils import error_response, format_micros, resolve_customer_id, success_response, to_micros, validate_numeric_id
 
 
 @mcp.tool()
@@ -40,7 +40,7 @@ def list_budgets(
                 "budget_id": str(row.campaign_budget.id),
                 "name": row.campaign_budget.name,
                 "amount_micros": row.campaign_budget.amount_micros,
-                "amount": row.campaign_budget.amount_micros / 1_000_000 if row.campaign_budget.amount_micros else None,
+                "amount": format_micros(row.campaign_budget.amount_micros),
                 "delivery_method": row.campaign_budget.delivery_method.name,
                 "status": row.campaign_budget.status.name,
                 "total_amount_micros": row.campaign_budget.total_amount_micros,
@@ -59,6 +59,7 @@ def get_budget(
     """Get detailed information about a specific campaign budget."""
     try:
         cid = resolve_customer_id(customer_id)
+        safe_id = validate_numeric_id(budget_id, "budget_id")
         service = get_service("GoogleAdsService")
         query = f"""
             SELECT
@@ -74,7 +75,7 @@ def get_budget(
                 campaign_budget.recommended_budget_estimated_change_weekly_clicks,
                 campaign_budget.recommended_budget_estimated_change_weekly_interactions
             FROM campaign_budget
-            WHERE campaign_budget.id = {budget_id}
+            WHERE campaign_budget.id = {safe_id}
         """
         response = service.search(customer_id=cid, query=query)
         for row in response:
@@ -82,7 +83,7 @@ def get_budget(
                 "budget_id": str(row.campaign_budget.id),
                 "name": row.campaign_budget.name,
                 "amount_micros": row.campaign_budget.amount_micros,
-                "amount": row.campaign_budget.amount_micros / 1_000_000 if row.campaign_budget.amount_micros else None,
+                "amount": format_micros(row.campaign_budget.amount_micros),
                 "delivery_method": row.campaign_budget.delivery_method.name,
                 "status": row.campaign_budget.status.name,
                 "shared": row.campaign_budget.explicitly_shared,

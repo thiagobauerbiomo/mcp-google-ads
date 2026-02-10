@@ -8,7 +8,7 @@ from google.api_core import protobuf_helpers
 
 from ..auth import get_client, get_service
 from ..coordinator import mcp
-from ..utils import error_response, resolve_customer_id, success_response, to_micros
+from ..utils import error_response, format_micros, resolve_customer_id, success_response, to_micros, validate_numeric_id, validate_status
 
 
 @mcp.tool()
@@ -24,9 +24,9 @@ def list_ad_groups(
         service = get_service("GoogleAdsService")
         conditions = []
         if campaign_id:
-            conditions.append(f"campaign.id = {campaign_id}")
+            conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
         if status_filter:
-            conditions.append(f"ad_group.status = '{status_filter}'")
+            conditions.append(f"ad_group.status = '{validate_status(status_filter)}'")
         where = "WHERE " + " AND ".join(conditions) if conditions else ""
 
         query = f"""
@@ -52,7 +52,7 @@ def list_ad_groups(
                 "status": row.ad_group.status.name,
                 "type": row.ad_group.type_.name,
                 "cpc_bid_micros": row.ad_group.cpc_bid_micros,
-                "cpc_bid": row.ad_group.cpc_bid_micros / 1_000_000 if row.ad_group.cpc_bid_micros else None,
+                "cpc_bid": format_micros(row.ad_group.cpc_bid_micros),
                 "campaign_id": str(row.campaign.id),
                 "campaign_name": row.campaign.name,
             })
@@ -69,6 +69,7 @@ def get_ad_group(
     """Get detailed information about a specific ad group."""
     try:
         cid = resolve_customer_id(customer_id)
+        safe_ad_group_id = validate_numeric_id(ad_group_id, "ad_group_id")
         service = get_service("GoogleAdsService")
         query = f"""
             SELECT
@@ -84,7 +85,7 @@ def get_ad_group(
                 campaign.id,
                 campaign.name
             FROM ad_group
-            WHERE ad_group.id = {ad_group_id}
+            WHERE ad_group.id = {safe_ad_group_id}
         """
         response = service.search(customer_id=cid, query=query)
         for row in response:
@@ -94,7 +95,7 @@ def get_ad_group(
                 "status": row.ad_group.status.name,
                 "type": row.ad_group.type_.name,
                 "cpc_bid_micros": row.ad_group.cpc_bid_micros,
-                "cpc_bid": row.ad_group.cpc_bid_micros / 1_000_000 if row.ad_group.cpc_bid_micros else None,
+                "cpc_bid": format_micros(row.ad_group.cpc_bid_micros),
                 "target_cpa_micros": row.ad_group.target_cpa_micros,
                 "target_roas": row.ad_group.target_roas,
                 "campaign_id": str(row.campaign.id),

@@ -3,21 +3,21 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from mcp_google_ads.utils import (
-    build_resource_name,
+    build_date_clause,
     error_response,
     format_micros,
-    handle_rate_limit,
-    log_api_error,
-    log_tool_call,
-    parse_google_ads_error,
     resolve_customer_id,
     success_response,
     to_micros,
+    validate_date,
+    validate_date_range,
+    validate_numeric_id,
+    validate_status,
 )
 
 
@@ -92,55 +92,74 @@ class TestToMicros:
         assert to_micros(100) == 100_000_000
 
 
-class TestBuildResourceName:
-    def test_builds_name(self):
-        result = build_resource_name("campaigns", "123", "456")
-        assert result == "customers/123/campaigns/456"
+class TestValidateStatus:
+    def test_valid_statuses(self):
+        assert validate_status("ENABLED") == "ENABLED"
+        assert validate_status("paused") == "PAUSED"
+        assert validate_status("Removed") == "REMOVED"
+
+    def test_invalid_status(self):
+        with pytest.raises(Exception, match="Status inválido"):
+            validate_status("ACTIVE")
 
 
-class TestParseGoogleAdsError:
-    def test_with_failure_attr(self):
-        error = MagicMock()
-        err1 = MagicMock()
-        err1.error_code = "CAMPAIGN_ERROR"
-        err1.message = "Invalid campaign"
-        error.failure.errors = [err1]
-        result = parse_google_ads_error(error)
-        assert "CAMPAIGN_ERROR" in result
-        assert "Invalid campaign" in result
+class TestValidateDateRange:
+    def test_valid_ranges(self):
+        assert validate_date_range("LAST_30_DAYS") == "LAST_30_DAYS"
+        assert validate_date_range("today") == "TODAY"
+        assert validate_date_range("THIS_MONTH") == "THIS_MONTH"
 
-    def test_without_failure(self):
-        error = Exception("simple error")
-        result = parse_google_ads_error(error)
-        assert result == "simple error"
+    def test_invalid_range(self):
+        with pytest.raises(Exception, match="Date range inválido"):
+            validate_date_range("LAST_3_DAYS")
 
 
-class TestHandleRateLimit:
-    def test_detects_quota(self):
-        error = Exception("QUOTA exceeded for project")
-        assert handle_rate_limit(error) is True
+class TestValidateDate:
+    def test_valid_date(self):
+        assert validate_date("2024-01-15") == "2024-01-15"
 
-    def test_detects_rate_limit(self):
-        error = Exception("rate limit reached")
-        assert handle_rate_limit(error) is True
+    def test_invalid_date(self):
+        with pytest.raises(Exception, match="Data inválida"):
+            validate_date("01-15-2024")
 
-    def test_not_rate_limit(self):
-        error = Exception("invalid campaign name")
-        assert handle_rate_limit(error) is False
-
-
-class TestLogToolCall:
-    @patch("mcp_google_ads.utils.logger")
-    def test_logs_info(self, mock_logger):
-        log_tool_call("list_campaigns", "123", status_filter="ENABLED", limit=None)
-        mock_logger.info.assert_called_once()
-        call_args = mock_logger.info.call_args[0]
-        assert "list_campaigns" in call_args[1]
-        assert "123" in call_args[2]
+    def test_invalid_format(self):
+        with pytest.raises(Exception, match="Data inválida"):
+            validate_date("2024/01/15")
 
 
-class TestLogApiError:
-    @patch("mcp_google_ads.utils.logger")
-    def test_logs_error(self, mock_logger):
-        log_api_error("create_campaign", Exception("fail"), "123")
-        mock_logger.error.assert_called_once()
+class TestValidateNumericId:
+    def test_valid_id(self):
+        assert validate_numeric_id("1234567890") == "1234567890"
+
+    def test_strips_hyphens(self):
+        assert validate_numeric_id("123-456-7890") == "1234567890"
+
+    def test_invalid_id(self):
+        with pytest.raises(Exception, match="inválido"):
+            validate_numeric_id("abc123")
+
+
+class TestBuildDateClause:
+    def test_with_start_end(self):
+        result = build_date_clause(start_date="2024-01-01", end_date="2024-01-31")
+        assert result == "segments.date BETWEEN '2024-01-01' AND '2024-01-31'"
+
+    def test_with_date_range(self):
+        result = build_date_clause(date_range="LAST_7_DAYS")
+        assert result == "DURING LAST_7_DAYS"
+
+    def test_default(self):
+        result = build_date_clause()
+        assert result == "DURING LAST_30_DAYS"
+
+    def test_custom_default(self):
+        result = build_date_clause(default="LAST_7_DAYS")
+        assert result == "DURING LAST_7_DAYS"
+
+    def test_start_end_overrides_date_range(self):
+        result = build_date_clause(
+            date_range="LAST_7_DAYS",
+            start_date="2024-01-01",
+            end_date="2024-01-31",
+        )
+        assert "BETWEEN" in result

@@ -8,7 +8,7 @@ from google.api_core import protobuf_helpers
 
 from ..auth import get_client, get_service
 from ..coordinator import mcp
-from ..utils import error_response, resolve_customer_id, success_response
+from ..utils import error_response, resolve_customer_id, success_response, validate_numeric_id, validate_status
 
 
 @mcp.tool()
@@ -25,11 +25,11 @@ def list_ads(
         service = get_service("GoogleAdsService")
         conditions = []
         if ad_group_id:
-            conditions.append(f"ad_group.id = {ad_group_id}")
+            conditions.append(f"ad_group.id = {validate_numeric_id(ad_group_id, 'ad_group_id')}")
         if campaign_id:
-            conditions.append(f"campaign.id = {campaign_id}")
+            conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
         if status_filter:
-            conditions.append(f"ad_group_ad.status = '{status_filter}'")
+            conditions.append(f"ad_group_ad.status = '{validate_status(status_filter)}'")
         where = "WHERE " + " AND ".join(conditions) if conditions else ""
 
         query = f"""
@@ -84,6 +84,8 @@ def get_ad(
     """Get detailed information about a specific ad."""
     try:
         cid = resolve_customer_id(customer_id)
+        safe_ag = validate_numeric_id(ad_group_id, "ad_group_id")
+        safe_ad = validate_numeric_id(ad_id, "ad_id")
         service = get_service("GoogleAdsService")
         query = f"""
             SELECT
@@ -101,7 +103,7 @@ def get_ad(
                 ad_group_ad.ad_strength,
                 ad_group_ad.policy_summary.approval_status
             FROM ad_group_ad
-            WHERE ad_group.id = {ad_group_id} AND ad_group_ad.ad.id = {ad_id}
+            WHERE ad_group.id = {safe_ag} AND ad_group_ad.ad.id = {safe_ad}
         """
         response = service.search(customer_id=cid, query=query)
         for row in response:
@@ -284,9 +286,9 @@ def get_ad_strength(
         service = get_service("GoogleAdsService")
         conditions = ["ad_group_ad.ad.type = 'RESPONSIVE_SEARCH_AD'"]
         if ad_group_id:
-            conditions.append(f"ad_group.id = {ad_group_id}")
+            conditions.append(f"ad_group.id = {validate_numeric_id(ad_group_id, 'ad_group_id')}")
         if campaign_id:
-            conditions.append(f"campaign.id = {campaign_id}")
+            conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
         where = "WHERE " + " AND ".join(conditions)
 
         query = f"""
