@@ -36,9 +36,7 @@ def list_campaigns(
                 campaign.status,
                 campaign.advertising_channel_type,
                 campaign.bidding_strategy_type,
-                campaign_budget.amount_micros,
-                campaign.start_date,
-                campaign.end_date
+                campaign_budget.amount_micros
             FROM campaign
             {"WHERE campaign.status = '" + status_filter + "'" if status_filter else ""}
             ORDER BY campaign.name ASC
@@ -55,8 +53,6 @@ def list_campaigns(
                 "bidding_strategy": row.campaign.bidding_strategy_type.name,
                 "budget_micros": row.campaign_budget.amount_micros,
                 "budget": row.campaign_budget.amount_micros / 1_000_000 if row.campaign_budget.amount_micros else None,
-                "start_date": row.campaign.start_date,
-                "end_date": row.campaign.end_date,
             })
         return success_response({"campaigns": campaigns, "count": len(campaigns)})
     except Exception as e:
@@ -83,8 +79,6 @@ def get_campaign(
                 campaign.bidding_strategy,
                 campaign_budget.amount_micros,
                 campaign_budget.delivery_method,
-                campaign.start_date,
-                campaign.end_date,
                 campaign.serving_status,
                 campaign.network_settings.target_google_search,
                 campaign.network_settings.target_search_network,
@@ -106,8 +100,6 @@ def get_campaign(
                 "budget_micros": row.campaign_budget.amount_micros,
                 "budget": row.campaign_budget.amount_micros / 1_000_000 if row.campaign_budget.amount_micros else None,
                 "budget_delivery": row.campaign_budget.delivery_method.name,
-                "start_date": row.campaign.start_date,
-                "end_date": row.campaign.end_date,
                 "serving_status": row.campaign.serving_status.name,
                 "target_google_search": row.campaign.network_settings.target_google_search,
                 "target_search_network": row.campaign.network_settings.target_search_network,
