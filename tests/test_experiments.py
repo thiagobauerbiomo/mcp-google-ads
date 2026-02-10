@@ -37,6 +37,98 @@ class TestListExperiments:
         assert "Failed to list experiments" in result["error"]
 
 
+class TestCreateExperiment:
+    @patch("mcp_google_ads.tools.experiments.get_service")
+    @patch("mcp_google_ads.tools.experiments.get_client")
+    @patch("mcp_google_ads.tools.experiments.resolve_customer_id", return_value="123")
+    def test_creates_experiment_basic(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.experiments import create_experiment
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        exp_response = MagicMock()
+        exp_response.results = [MagicMock(resource_name="customers/123/experiments/555")]
+        exp_service = MagicMock()
+        exp_service.mutate_experiments.return_value = exp_response
+
+        arm_service = MagicMock()
+
+        mock_get_service.side_effect = [exp_service, arm_service]
+
+        result = assert_success(create_experiment("123", "Test Exp", "111", 30))
+        assert result["data"]["experiment_id"] == "555"
+        assert "30%" in result["data"]["traffic_split"]
+        assert "70%" in result["data"]["traffic_split"]
+
+        exp_service.mutate_experiments.assert_called_once()
+        arm_service.mutate_experiment_arms.assert_called_once()
+        exp_service.schedule_experiment.assert_called_once_with(
+            resource_name="customers/123/experiments/555"
+        )
+
+    @patch("mcp_google_ads.tools.experiments.get_service")
+    @patch("mcp_google_ads.tools.experiments.get_client")
+    @patch("mcp_google_ads.tools.experiments.resolve_customer_id", return_value="123")
+    def test_creates_experiment_with_dates(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.experiments import create_experiment
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        exp_response = MagicMock()
+        exp_response.results = [MagicMock(resource_name="customers/123/experiments/556")]
+        exp_service = MagicMock()
+        exp_service.mutate_experiments.return_value = exp_response
+
+        arm_service = MagicMock()
+
+        mock_get_service.side_effect = [exp_service, arm_service]
+
+        result = assert_success(
+            create_experiment("123", "Dated Exp", "111", 40, start_date="2024-01-01", end_date="2024-02-01")
+        )
+        assert result["data"]["experiment_id"] == "556"
+
+        # Verifica que as datas foram atribuidas ao experimento
+        operation = client.get_type.return_value
+        assert operation.create.start_date == "2024-01-01"
+        assert operation.create.end_date == "2024-02-01"
+
+    @patch("mcp_google_ads.tools.experiments.get_service")
+    @patch("mcp_google_ads.tools.experiments.get_client")
+    @patch("mcp_google_ads.tools.experiments.resolve_customer_id", return_value="123")
+    def test_creates_experiment_with_description(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.experiments import create_experiment
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        exp_response = MagicMock()
+        exp_response.results = [MagicMock(resource_name="customers/123/experiments/557")]
+        exp_service = MagicMock()
+        exp_service.mutate_experiments.return_value = exp_response
+
+        arm_service = MagicMock()
+
+        mock_get_service.side_effect = [exp_service, arm_service]
+
+        result = assert_success(
+            create_experiment("123", "Desc Exp", "111", 50, description="Test description")
+        )
+        assert result["data"]["experiment_id"] == "557"
+
+        operation = client.get_type.return_value
+        assert operation.create.description == "Test description"
+
+    @patch("mcp_google_ads.tools.experiments.resolve_customer_id", side_effect=Exception("Auth failed"))
+    def test_error_handling(self, mock_resolve):
+        from mcp_google_ads.tools.experiments import create_experiment
+
+        result = assert_error(create_experiment("123", "Fail Exp", "111", 30))
+        assert "Failed to create experiment" in result["error"]
+
+
 class TestGetExperiment:
     @patch("mcp_google_ads.tools.experiments.get_service")
     @patch("mcp_google_ads.tools.experiments.resolve_customer_id", return_value="123")

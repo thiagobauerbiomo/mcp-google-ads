@@ -52,6 +52,69 @@ class TestListRecommendations:
         result = assert_error(list_recommendations("123", recommendation_type="'; DROP"))
         assert "Failed to list recommendations" in result["error"]
 
+    @patch("mcp_google_ads.tools.recommendations.resolve_customer_id", side_effect=Exception("connection error"))
+    def test_error_handling(self, mock_resolve):
+        from mcp_google_ads.tools.recommendations import list_recommendations
+
+        result = assert_error(list_recommendations("123"))
+        assert "Failed to list recommendations" in result["error"]
+
+
+class TestGetRecommendation:
+    @patch("mcp_google_ads.tools.recommendations.get_service")
+    @patch("mcp_google_ads.tools.recommendations.resolve_customer_id", return_value="123")
+    def test_returns_recommendation_with_metrics(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.recommendations import get_recommendation
+
+        mock_row = MagicMock()
+        mock_row.recommendation.resource_name = "customers/123/recommendations/456"
+        mock_row.recommendation.type_.name = "KEYWORD"
+        mock_row.recommendation.dismissed = False
+        mock_row.recommendation.campaign = "customers/123/campaigns/111"
+        mock_row.recommendation.ad_group = "customers/123/adGroups/222"
+        mock_row.recommendation.impact.base_metrics.impressions = 100
+        mock_row.recommendation.impact.base_metrics.clicks = 10
+        mock_row.recommendation.impact.base_metrics.cost_micros = 1_000_000
+        mock_row.recommendation.impact.potential_metrics.impressions = 200
+        mock_row.recommendation.impact.potential_metrics.clicks = 20
+        mock_row.recommendation.impact.potential_metrics.cost_micros = 2_000_000
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = [mock_row]
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(get_recommendation("123", "456"))
+        assert result["data"]["resource_name"] == "customers/123/recommendations/456"
+        assert result["data"]["type"] == "KEYWORD"
+        assert result["data"]["dismissed"] is False
+        assert result["data"]["campaign"] == "customers/123/campaigns/111"
+        assert result["data"]["ad_group"] == "customers/123/adGroups/222"
+
+    @patch("mcp_google_ads.tools.recommendations.get_service")
+    @patch("mcp_google_ads.tools.recommendations.resolve_customer_id", return_value="123")
+    def test_not_found(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.recommendations import get_recommendation
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = []
+        mock_get_service.return_value = mock_service
+
+        result = assert_error(get_recommendation("123", "999"))
+        assert "not found" in result["error"]
+
+    def test_rejects_invalid_recommendation_id(self):
+        from mcp_google_ads.tools.recommendations import get_recommendation
+
+        result = assert_error(get_recommendation("123", "abc"))
+        assert "Failed to get recommendation" in result["error"]
+
+    @patch("mcp_google_ads.tools.recommendations.resolve_customer_id", side_effect=Exception("api error"))
+    def test_error_handling(self, mock_resolve):
+        from mcp_google_ads.tools.recommendations import get_recommendation
+
+        result = assert_error(get_recommendation("123", "456"))
+        assert "Failed to get recommendation" in result["error"]
+
 
 class TestApplyRecommendation:
     @patch("mcp_google_ads.tools.recommendations.get_service")
@@ -72,6 +135,13 @@ class TestApplyRecommendation:
         result = assert_success(apply_recommendation("123", "customers/123/recommendations/1"))
         assert result["data"]["applied"] == 1
 
+    @patch("mcp_google_ads.tools.recommendations.resolve_customer_id", side_effect=Exception("apply error"))
+    def test_error_handling(self, mock_resolve):
+        from mcp_google_ads.tools.recommendations import apply_recommendation
+
+        result = assert_error(apply_recommendation("123", "customers/123/recommendations/1"))
+        assert "Failed to apply recommendation" in result["error"]
+
 
 class TestDismissRecommendation:
     @patch("mcp_google_ads.tools.recommendations.get_service")
@@ -91,6 +161,13 @@ class TestDismissRecommendation:
 
         result = assert_success(dismiss_recommendation("123", "customers/123/recommendations/1"))
         assert result["data"]["dismissed"] == 1
+
+    @patch("mcp_google_ads.tools.recommendations.resolve_customer_id", side_effect=Exception("dismiss error"))
+    def test_error_handling(self, mock_resolve):
+        from mcp_google_ads.tools.recommendations import dismiss_recommendation
+
+        result = assert_error(dismiss_recommendation("123", "customers/123/recommendations/1"))
+        assert "Failed to dismiss recommendation" in result["error"]
 
 
 class TestGetOptimizationScore:
@@ -121,3 +198,10 @@ class TestGetOptimizationScore:
 
         result = assert_error(get_optimization_score("123"))
         assert "Could not retrieve" in result["error"]
+
+    @patch("mcp_google_ads.tools.recommendations.resolve_customer_id", side_effect=Exception("score error"))
+    def test_error_handling(self, mock_resolve):
+        from mcp_google_ads.tools.recommendations import get_optimization_score
+
+        result = assert_error(get_optimization_score("123"))
+        assert "Failed to get optimization score" in result["error"]

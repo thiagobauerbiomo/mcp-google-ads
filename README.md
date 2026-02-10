@@ -10,7 +10,7 @@ MCP Server for Google Ads API v23 with full CRUD operations — **123 tools** ac
 - GAQL injection protection on all inputs
 - Structured logging in all modules
 - Consistent JSON responses with error handling
-- 430 tests, 82% coverage
+- 527 tests, 96% coverage
 
 ## Quick Start
 
