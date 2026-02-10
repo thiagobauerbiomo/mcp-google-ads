@@ -161,12 +161,12 @@ def build_date_clause(
     end_date: str | None = None,
     default: str = "LAST_30_DAYS",
 ) -> str:
-    """Build a GAQL date clause (WHERE or DURING) from parameters.
+    """Build a GAQL date clause for WHERE conditions.
 
     Returns a string like:
       "segments.date BETWEEN '2024-01-01' AND '2024-01-31'"
     or:
-      "DURING LAST_30_DAYS"
+      "segments.date DURING LAST_30_DAYS"
     """
     if start_date and end_date:
         s = validate_date(start_date)
@@ -175,5 +175,5 @@ def build_date_clause(
             raise GoogleAdsMCPError(f"start_date ({s}) deve ser anterior a end_date ({e})")
         return f"segments.date BETWEEN '{s}' AND '{e}'"
     if date_range:
-        return f"DURING {validate_date_range(date_range)}"
-    return f"DURING {validate_date_range(default)}"
+        return f"segments.date DURING {validate_date_range(date_range)}"
+    return f"segments.date DURING {validate_date_range(default)}"

@@ -149,15 +149,15 @@ class TestBuildDateClause:
 
     def test_with_date_range(self):
         result = build_date_clause(date_range="LAST_7_DAYS")
-        assert result == "DURING LAST_7_DAYS"
+        assert result == "segments.date DURING LAST_7_DAYS"
 
     def test_default(self):
         result = build_date_clause()
-        assert result == "DURING LAST_30_DAYS"
+        assert result == "segments.date DURING LAST_30_DAYS"
 
     def test_custom_default(self):
         result = build_date_clause(default="LAST_7_DAYS")
-        assert result == "DURING LAST_7_DAYS"
+        assert result == "segments.date DURING LAST_7_DAYS"
 
     def test_start_end_overrides_date_range(self):
         result = build_date_clause(

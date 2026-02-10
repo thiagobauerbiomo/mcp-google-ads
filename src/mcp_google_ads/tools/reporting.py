@@ -29,15 +29,10 @@ def _build_where(
     end_date: str | None,
     default_range: str = "LAST_30_DAYS",
 ) -> str:
-    """Build a complete WHERE + DURING clause for GAQL reports."""
+    """Build a complete WHERE clause for GAQL reports."""
     date = build_date_clause(date_range, start_date, end_date, default=default_range)
-
-    if date.startswith("segments.date"):
-        conditions.append(date)
-        return "WHERE " + " AND ".join(conditions) if conditions else ""
-
-    where = "WHERE " + " AND ".join(conditions) if conditions else ""
-    return f"{where} {date}" if where else date
+    conditions.append(date)
+    return "WHERE " + " AND ".join(conditions) if conditions else ""
 
 
 def _run_report(
