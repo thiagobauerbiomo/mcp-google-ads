@@ -154,6 +154,15 @@ Configurado em pyproject.toml:
 - Ignore: E501, SIM108, SIM113
 - Tests: F401, F811 ignorados
 
+## Knowledge Base (Skills)
+Referencia de estrategias e recipes em `/home/thiago/projetos/skills/agentes_ai/`:
+- `05_Google_Ads_AI_Agents.md` — 5 blueprints de automacao (analise, keywords, criacao, monitoramento, audiencias)
+- `06_google_ads_estrategias.md` — Estrutura full-funnel, progressao de lances, sinais, audiencias, API v23
+- `07_google_ads_gaql_recipes.md` — 20+ queries GAQL prontas (performance, keywords, search terms, QS, demograficos, geo, devices, horarios, budget, concorrencia)
+- `08_google_ads_checklist.md` — Checklists de setup, auditoria semanal/mensal, pre-lancamento, criterios de decisao rapida
+
+Consultar essas skills antes de tomar decisoes de otimizacao ou criar automacoes.
+
 ## API Reference
 - Campos GAQL: https://developers.google.com/google-ads/api/fields/v23/overview
 - Resource names: `customers/{id}/campaigns/{id}`, etc.
