@@ -8,7 +8,7 @@ from google.api_core import protobuf_helpers
 
 from ..auth import get_client, get_service
 from ..coordinator import mcp
-from ..utils import error_response, format_micros, resolve_customer_id, success_response
+from ..utils import error_response, format_micros, resolve_customer_id, success_response, validate_numeric_id, validate_status
 
 
 @mcp.tool()
@@ -24,7 +24,7 @@ def list_conversion_actions(
     try:
         cid = resolve_customer_id(customer_id)
         service = get_service("GoogleAdsService")
-        status_clause = f"WHERE conversion_action.status = '{status_filter}'" if status_filter else ""
+        status_clause = f"WHERE conversion_action.status = '{validate_status(status_filter)}'" if status_filter else ""
 
         query = f"""
             SELECT
@@ -91,7 +91,7 @@ def get_conversion_action(
                 conversion_action.include_in_conversions_metric,
                 conversion_action.tag_snippets
             FROM conversion_action
-            WHERE conversion_action.id = {conversion_action_id}
+            WHERE conversion_action.id = {validate_numeric_id(conversion_action_id, "conversion_action_id")}
         """
         response = service.search(customer_id=cid, query=query)
         for row in response:
@@ -221,6 +221,16 @@ def import_offline_conversions(
     """
     try:
         cid = resolve_customer_id(customer_id)
+
+        if len(conversions) > 2000:
+            return error_response(f"Maximum 2000 conversions per call, received: {len(conversions)}")
+
+        required_fields = ("gclid", "conversion_action_id", "conversion_date_time")
+        for conv in conversions:
+            for field in required_fields:
+                if field not in conv:
+                    return error_response(f"Each conversion must have a '{field}' field")
+
         client = get_client()
         service = get_service("ConversionUploadService")
 

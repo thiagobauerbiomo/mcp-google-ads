@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from ..auth import get_service
@@ -13,6 +14,8 @@ from ..utils import (
     resolve_customer_id,
     success_response,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @mcp.tool()
@@ -55,6 +58,7 @@ def mcc_performance_summary(
         date = build_date_clause(date_range, start_date, end_date)
 
         accounts_data = []
+        errors = []
         totals = {
             "impressions": 0, "clicks": 0, "cost_micros": 0,
             "conversions": 0.0, "accounts_with_spend": 0,
@@ -104,8 +108,9 @@ def mcc_performance_summary(
                     totals["conversions"] += row.metrics.conversions
                     if row.metrics.cost_micros > 0:
                         totals["accounts_with_spend"] += 1
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to get metrics for account %s: %s", cid, e)
+                errors.append({"customer_id": cid, "name": client_names.get(cid, ""), "error": str(e)})
 
             count += 1
 
@@ -116,11 +121,15 @@ def mcc_performance_summary(
 
         accounts_data.sort(key=lambda x: x.get("cost") or 0, reverse=True)
 
-        return success_response({
+        result = {
             "totals": totals,
             "accounts": accounts_data,
             "accounts_count": len(accounts_data),
-        })
+        }
+        if errors:
+            result["errors"] = errors
+
+        return success_response(result)
     except Exception as e:
         return error_response(f"Failed to get MCC performance summary: {e}")
 
@@ -234,8 +243,8 @@ def account_dashboard(
             for row in response:
                 if row.customer.optimization_score:
                     opt_score = round(row.customer.optimization_score * 100, 1)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to get optimization score for %s: %s", cid, e)
 
         # 5. Recommendations count
         rec_count = 0
@@ -248,8 +257,8 @@ def account_dashboard(
             response = service.search(customer_id=cid, query=rec_query)
             for _ in response:
                 rec_count += 1
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to get recommendations count for %s: %s", cid, e)
 
         return success_response({
             "metrics": metrics_data,

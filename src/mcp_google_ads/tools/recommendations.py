@@ -6,7 +6,7 @@ from typing import Annotated
 
 from ..auth import get_client, get_service
 from ..coordinator import mcp
-from ..utils import error_response, format_micros, resolve_customer_id, success_response
+from ..utils import error_response, format_micros, resolve_customer_id, success_response, validate_enum_value
 
 
 @mcp.tool()
@@ -22,7 +22,7 @@ def list_recommendations(
     try:
         cid = resolve_customer_id(customer_id)
         service = get_service("GoogleAdsService")
-        type_filter = f"WHERE recommendation.type = '{recommendation_type}'" if recommendation_type else ""
+        type_filter = f"WHERE recommendation.type = '{validate_enum_value(recommendation_type, 'recommendation_type')}'" if recommendation_type else ""
 
         query = f"""
             SELECT

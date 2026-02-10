@@ -6,7 +6,7 @@ from typing import Annotated
 
 from ..auth import get_client, get_service
 from ..coordinator import mcp
-from ..utils import error_response, resolve_customer_id, success_response
+from ..utils import error_response, resolve_customer_id, success_response, validate_numeric_id
 
 
 @mcp.tool()
@@ -136,6 +136,7 @@ def get_experiment(
     """Get detailed information about a specific experiment including its arms."""
     try:
         cid = resolve_customer_id(customer_id)
+        safe_eid = validate_numeric_id(experiment_id, "experiment_id")
         service = get_service("GoogleAdsService")
 
         query = f"""
@@ -149,7 +150,7 @@ def get_experiment(
                 experiment.goals,
                 experiment.suffix
             FROM experiment
-            WHERE experiment.resource_name = 'customers/{cid}/experiments/{experiment_id}'
+            WHERE experiment.resource_name = 'customers/{cid}/experiments/{safe_eid}'
         """
         response = service.search(customer_id=cid, query=query)
         experiment_data = None
@@ -175,7 +176,7 @@ def get_experiment(
                 experiment_arm.traffic_split,
                 experiment_arm.campaigns
             FROM experiment_arm
-            WHERE experiment_arm.experiment = 'customers/{cid}/experiments/{experiment_id}'
+            WHERE experiment_arm.experiment = 'customers/{cid}/experiments/{safe_eid}'
         """
         arm_response = service.search(customer_id=cid, query=arm_query)
         arms = []
@@ -204,9 +205,10 @@ def promote_experiment(
     """
     try:
         cid = resolve_customer_id(customer_id)
+        safe_eid = validate_numeric_id(experiment_id, "experiment_id")
         service = get_service("ExperimentService")
 
-        resource_name = f"customers/{cid}/experiments/{experiment_id}"
+        resource_name = f"customers/{cid}/experiments/{safe_eid}"
         service.promote_experiment(resource_name=resource_name)
 
         return success_response(
@@ -228,9 +230,10 @@ def end_experiment(
     """
     try:
         cid = resolve_customer_id(customer_id)
+        safe_eid = validate_numeric_id(experiment_id, "experiment_id")
         service = get_service("ExperimentService")
 
-        resource_name = f"customers/{cid}/experiments/{experiment_id}"
+        resource_name = f"customers/{cid}/experiments/{safe_eid}"
         service.end_experiment(resource_name=resource_name)
 
         return success_response(

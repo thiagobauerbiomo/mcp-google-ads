@@ -109,6 +109,23 @@ def validate_numeric_id(value: str, field_name: str = "ID") -> str:
     return clean
 
 
+_ENUM_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def validate_enum_value(value: str, field_name: str = "value") -> str:
+    """Validate that a string looks like a GAQL enum (alphanumeric + underscores only)."""
+    if not _ENUM_PATTERN.match(value):
+        raise GoogleAdsMCPError(f"{field_name} inválido: '{value}'. Apenas letras, números e underscores.")
+    return value.upper()
+
+
+def validate_limit(limit: int, max_limit: int = 10000) -> int:
+    """Validate that a limit is within acceptable bounds."""
+    if limit < 1 or limit > max_limit:
+        raise GoogleAdsMCPError(f"limit deve ser entre 1 e {max_limit}, recebido: {limit}")
+    return limit
+
+
 def build_date_clause(
     date_range: str | None = None,
     start_date: str | None = None,
@@ -125,6 +142,8 @@ def build_date_clause(
     if start_date and end_date:
         s = validate_date(start_date)
         e = validate_date(end_date)
+        if s > e:
+            raise GoogleAdsMCPError(f"start_date ({s}) deve ser anterior a end_date ({e})")
         return f"segments.date BETWEEN '{s}' AND '{e}'"
     if date_range:
         return f"DURING {validate_date_range(date_range)}"

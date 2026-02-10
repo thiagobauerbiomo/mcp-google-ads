@@ -67,10 +67,12 @@ error_response("Descricao do erro", details={"field": "valor"})
 ## Validação GAQL (utils.py)
 Todas as tools validam inputs antes de interpolar em queries GAQL:
 - `validate_status(s)` — valida contra ENABLED/PAUSED/REMOVED
-- `validate_numeric_id(s)` — garante que IDs são numéricos
+- `validate_numeric_id(s)` — garante que IDs são numéricos (remove hifens)
+- `validate_enum_value(s)` — valida enums GAQL (apenas letras, números e underscores)
 - `validate_date_range(s)` — valida contra ranges permitidos (LAST_30_DAYS, etc.)
 - `validate_date(s)` — valida formato YYYY-MM-DD
-- `build_date_clause(date_range, start_date, end_date)` — constroi clausula de data GAQL
+- `validate_limit(n, max)` — valida que limit está entre 1 e max (default 10000)
+- `build_date_clause(date_range, start_date, end_date)` — constroi clausula de data GAQL (valida ordem das datas)
 
 ## Reports
 Todos os 14 reports suportam datas customizadas:
@@ -83,7 +85,40 @@ Todos os 14 reports suportam datas customizadas:
 - customer_id obrigatorio na maioria das tools
 - Credenciais via env vars (nunca hardcoded)
 - Logs vao para stderr (stdout reservado para JSON-RPC)
-- Validação de inputs GAQL contra injection
+- Validação de inputs GAQL contra injection (todos os 20 modulos)
+- `execute_gaql`: SELECT-only, max 10000 chars, keyword blocklist, logging
+- Batch limits: max 5000 keywords/assets por chamada, 2000 conversions
+- Deduplicação automática em batch de keywords (por text+match_type)
+- Validação de dict params (campos obrigatórios verificados antes do envio)
+- Dashboard com logging de erros (nunca swallow silencioso)
+
+## Testes (151 testes)
+Cobertura de todos os 20 modulos de tools + utils, config, auth:
+```
+tests/
+├── conftest.py              # fixtures: mock_config, mock_google_ads_client, assert_success/error
+├── test_utils.py            # 27 testes (todos os validadores)
+├── test_config.py           #  6 testes
+├── test_auth.py             #  4 testes
+├── test_campaigns.py        #  6 testes
+├── test_ad_groups.py        #  2 testes
+├── test_ads.py              #  2 testes
+├── test_keywords.py         #  3 testes
+├── test_reporting.py        #  6 testes
+├── test_labels.py           #  5 testes
+├── test_conversions.py      #  3 testes
+├── test_shared_sets.py      #  3 testes
+├── test_targeting.py        #  5 testes
+├── test_search.py           #  7 testes (execute_gaql protections)
+├── test_dashboard.py        #  4 testes
+├── test_audiences.py        #  9 testes
+├── test_bidding.py          #  7 testes
+├── test_extensions.py       # 11 testes (batch limits, dict validation)
+├── test_recommendations.py  #  9 testes
+├── test_experiments.py      # 10 testes (validate_numeric_id)
+├── test_account_management.py # 7 testes
+└── test_campaign_types.py   #  4 testes
+```
 
 ## Dependencias Principais
 - `google-ads >= 28.0.0` (API v23)

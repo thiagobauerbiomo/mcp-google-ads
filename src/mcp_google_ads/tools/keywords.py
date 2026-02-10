@@ -81,11 +81,27 @@ def add_keywords(
     """
     try:
         cid = resolve_customer_id(customer_id)
+
+        if len(keywords) > 5000:
+            return error_response(f"Maximum 5000 keywords per call, received: {len(keywords)}")
+
+        for kw in keywords:
+            if "text" not in kw:
+                return error_response("Each keyword must have a 'text' field")
+
+        seen = set()
+        unique_keywords = []
+        for kw in keywords:
+            key = (kw["text"], kw.get("match_type", "BROAD"))
+            if key not in seen:
+                seen.add(key)
+                unique_keywords.append(kw)
+
         client = get_client()
         service = get_service("AdGroupCriterionService")
 
         operations = []
-        for kw in keywords:
+        for kw in unique_keywords:
             operation = client.get_type("AdGroupCriterionOperation")
             criterion = operation.create
             criterion.ad_group = f"customers/{cid}/adGroups/{ad_group_id}"
@@ -165,6 +181,10 @@ def remove_keywords(
     """Remove keywords from an ad group permanently."""
     try:
         cid = resolve_customer_id(customer_id)
+
+        if len(criterion_ids) > 5000:
+            return error_response(f"Maximum 5000 keywords per call, received: {len(criterion_ids)}")
+
         client = get_client()
         service = get_service("AdGroupCriterionService")
 
@@ -192,11 +212,27 @@ def add_negative_keywords_to_campaign(
     """Add negative keywords at the campaign level to prevent unwanted matches."""
     try:
         cid = resolve_customer_id(customer_id)
+
+        if len(keywords) > 5000:
+            return error_response(f"Maximum 5000 keywords per call, received: {len(keywords)}")
+
+        for kw in keywords:
+            if "text" not in kw:
+                return error_response("Each keyword must have a 'text' field")
+
+        seen = set()
+        unique_keywords = []
+        for kw in keywords:
+            key = (kw["text"], kw.get("match_type", "BROAD"))
+            if key not in seen:
+                seen.add(key)
+                unique_keywords.append(kw)
+
         client = get_client()
         service = get_service("CampaignCriterionService")
 
         operations = []
-        for kw in keywords:
+        for kw in unique_keywords:
             operation = client.get_type("CampaignCriterionOperation")
             criterion = operation.create
             criterion.campaign = f"customers/{cid}/campaigns/{campaign_id}"
@@ -226,11 +262,17 @@ def add_negative_keywords_to_shared_set(
     """Add negative keywords to a shared negative keyword list."""
     try:
         cid = resolve_customer_id(customer_id)
+
+        if len(keywords) > 5000:
+            return error_response(f"Maximum 5000 keywords per call, received: {len(keywords)}")
+
+        unique_keywords = list(dict.fromkeys(keywords))
+
         client = get_client()
         service = get_service("SharedCriterionService")
 
         operations = []
-        for kw_text in keywords:
+        for kw_text in unique_keywords:
             operation = client.get_type("SharedCriterionOperation")
             criterion = operation.create
             criterion.shared_set = f"customers/{cid}/sharedSets/{shared_set_id}"

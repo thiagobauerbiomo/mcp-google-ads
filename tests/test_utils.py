@@ -16,6 +16,8 @@ from mcp_google_ads.utils import (
     to_micros,
     validate_date,
     validate_date_range,
+    validate_enum_value,
+    validate_limit,
     validate_numeric_id,
     validate_status,
 )
@@ -163,3 +165,53 @@ class TestBuildDateClause:
             end_date="2024-01-31",
         )
         assert "BETWEEN" in result
+
+    def test_start_date_after_end_date_raises(self):
+        with pytest.raises(Exception, match="start_date.*anterior"):
+            build_date_clause(start_date="2024-12-31", end_date="2024-01-01")
+
+
+class TestValidateEnumValue:
+    def test_valid_enum(self):
+        assert validate_enum_value("SITELINK") == "SITELINK"
+        assert validate_enum_value("custom_type") == "CUSTOM_TYPE"
+        assert validate_enum_value("LAST_7_DAYS") == "LAST_7_DAYS"
+
+    def test_with_numbers(self):
+        assert validate_enum_value("TYPE_1") == "TYPE_1"
+
+    def test_rejects_special_chars(self):
+        with pytest.raises(Exception, match="inválido"):
+            validate_enum_value("DROP TABLE")
+
+    def test_rejects_injection(self):
+        with pytest.raises(Exception, match="inválido"):
+            validate_enum_value("ENABLED' OR '1'='1")
+
+    def test_rejects_empty_string(self):
+        with pytest.raises(Exception, match="inválido"):
+            validate_enum_value("")
+
+
+class TestValidateLimit:
+    def test_valid_limit(self):
+        assert validate_limit(1) == 1
+        assert validate_limit(100) == 100
+        assert validate_limit(10000) == 10000
+
+    def test_zero_raises(self):
+        with pytest.raises(Exception, match="limit deve ser entre"):
+            validate_limit(0)
+
+    def test_negative_raises(self):
+        with pytest.raises(Exception, match="limit deve ser entre"):
+            validate_limit(-1)
+
+    def test_exceeds_max_raises(self):
+        with pytest.raises(Exception, match="limit deve ser entre"):
+            validate_limit(10001)
+
+    def test_custom_max(self):
+        assert validate_limit(500, max_limit=500) == 500
+        with pytest.raises(Exception, match="limit deve ser entre"):
+            validate_limit(501, max_limit=500)

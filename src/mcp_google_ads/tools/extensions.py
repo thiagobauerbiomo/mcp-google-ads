@@ -6,7 +6,7 @@ from typing import Annotated
 
 from ..auth import get_client, get_service
 from ..coordinator import mcp
-from ..utils import error_response, resolve_customer_id, success_response
+from ..utils import error_response, resolve_customer_id, success_response, validate_enum_value
 
 
 @mcp.tool()
@@ -19,7 +19,7 @@ def list_assets(
     try:
         cid = resolve_customer_id(customer_id)
         service = get_service("GoogleAdsService")
-        type_filter = f"WHERE asset.type = '{asset_type}'" if asset_type else ""
+        type_filter = f"WHERE asset.type = '{validate_enum_value(asset_type, 'asset_type')}'" if asset_type else ""
 
         query = f"""
             SELECT
@@ -76,6 +76,14 @@ def create_sitelink_assets(
     """
     try:
         cid = resolve_customer_id(customer_id)
+
+        if len(sitelinks) > 5000:
+            return error_response(f"Maximum 5000 sitelinks per call, received: {len(sitelinks)}")
+
+        for sl in sitelinks:
+            if "link_text" not in sl or "final_url" not in sl:
+                return error_response("Each sitelink must have 'link_text' and 'final_url' fields")
+
         client = get_client()
         service = get_service("AssetService")
 
@@ -112,6 +120,10 @@ def create_callout_assets(
     """
     try:
         cid = resolve_customer_id(customer_id)
+
+        if len(callouts) > 5000:
+            return error_response(f"Maximum 5000 callouts per call, received: {len(callouts)}")
+
         client = get_client()
         service = get_service("AssetService")
 
@@ -352,6 +364,11 @@ def create_price_asset(
         price_asset = asset.price_asset
         price_asset.type_ = getattr(client.enums.PriceExtensionTypeEnum, price_type)
         price_asset.language_code = language_code
+
+        for item in price_items:
+            for field in ("header", "description", "final_url", "price_micros"):
+                if field not in item:
+                    return error_response(f"Each price item must have a '{field}' field")
 
         for item in price_items:
             price_offering = client.get_type("PriceOffering")

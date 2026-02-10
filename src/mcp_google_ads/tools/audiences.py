@@ -6,7 +6,7 @@ from typing import Annotated
 
 from ..auth import get_client, get_service
 from ..coordinator import mcp
-from ..utils import error_response, resolve_customer_id, success_response
+from ..utils import error_response, resolve_customer_id, success_response, validate_enum_value, validate_numeric_id
 
 
 @mcp.tool()
@@ -19,7 +19,7 @@ def list_audience_segments(
     try:
         cid = resolve_customer_id(customer_id)
         service = get_service("GoogleAdsService")
-        type_filter = f"WHERE audience.type = '{segment_type}'" if segment_type else ""
+        type_filter = f"WHERE audience.type = '{validate_enum_value(segment_type, 'segment_type')}'" if segment_type else ""
 
         query = f"""
             SELECT
@@ -151,7 +151,7 @@ def list_campaign_targeting(
     try:
         cid = resolve_customer_id(customer_id)
         service = get_service("GoogleAdsService")
-        type_filter = f"AND campaign_criterion.type = '{criterion_type}'" if criterion_type else ""
+        type_filter = f"AND campaign_criterion.type = '{validate_enum_value(criterion_type, 'criterion_type')}'" if criterion_type else ""
 
         query = f"""
             SELECT
@@ -164,7 +164,7 @@ def list_campaign_targeting(
                 campaign_criterion.language.language_constant,
                 campaign.id
             FROM campaign_criterion
-            WHERE campaign.id = {campaign_id} {type_filter}
+            WHERE campaign.id = {validate_numeric_id(campaign_id, "campaign_id")} {type_filter}
             LIMIT {limit}
         """
         response = service.search(customer_id=cid, query=query)

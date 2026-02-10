@@ -8,7 +8,7 @@ from google.api_core import protobuf_helpers
 
 from ..auth import get_client, get_service
 from ..coordinator import mcp
-from ..utils import error_response, resolve_customer_id, success_response, to_micros
+from ..utils import error_response, resolve_customer_id, success_response, to_micros, validate_numeric_id
 
 
 @mcp.tool()
@@ -182,7 +182,7 @@ def list_asset_groups(
     try:
         cid = resolve_customer_id(customer_id)
         service = get_service("GoogleAdsService")
-        campaign_filter = f"WHERE campaign.id = {campaign_id}" if campaign_id else ""
+        campaign_filter = f"WHERE campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}" if campaign_id else ""
 
         query = f"""
             SELECT

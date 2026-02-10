@@ -8,7 +8,7 @@ from google.api_core import protobuf_helpers
 
 from ..auth import get_client, get_service
 from ..coordinator import mcp
-from ..utils import error_response, resolve_customer_id, success_response
+from ..utils import error_response, resolve_customer_id, success_response, validate_numeric_id
 
 
 @mcp.tool()
@@ -74,7 +74,7 @@ def get_bidding_strategy(
                 bidding_strategy.target_impression_share.location_fraction_micros,
                 bidding_strategy.target_impression_share.cpc_bid_ceiling_micros
             FROM bidding_strategy
-            WHERE bidding_strategy.id = {strategy_id}
+            WHERE bidding_strategy.id = {validate_numeric_id(strategy_id, "strategy_id")}
         """
         response = service.search(customer_id=cid, query=query)
         for row in response:

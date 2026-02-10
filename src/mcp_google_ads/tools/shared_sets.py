@@ -6,7 +6,7 @@ from typing import Annotated
 
 from ..auth import get_client, get_service
 from ..coordinator import mcp
-from ..utils import error_response, resolve_customer_id, success_response
+from ..utils import error_response, resolve_customer_id, success_response, validate_enum_value, validate_numeric_id
 
 
 @mcp.tool()
@@ -22,7 +22,7 @@ def list_shared_sets(
     try:
         cid = resolve_customer_id(customer_id)
         service = get_service("GoogleAdsService")
-        type_filter = f"WHERE shared_set.type = '{set_type}'" if set_type else ""
+        type_filter = f"WHERE shared_set.type = '{validate_enum_value(set_type, 'set_type')}'" if set_type else ""
 
         query = f"""
             SELECT
@@ -122,7 +122,7 @@ def list_shared_set_members(
                 shared_criterion.keyword.match_type,
                 shared_criterion.criterion_id
             FROM shared_criterion
-            WHERE shared_set.id = {shared_set_id}
+            WHERE shared_set.id = {validate_numeric_id(shared_set_id, "shared_set_id")}
             LIMIT {limit}
         """
         response = service.search(customer_id=cid, query=query)

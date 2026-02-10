@@ -8,7 +8,7 @@ from google.api_core import protobuf_helpers
 
 from ..auth import get_client, get_service
 from ..coordinator import mcp
-from ..utils import error_response, resolve_customer_id, success_response
+from ..utils import error_response, resolve_customer_id, success_response, validate_numeric_id
 
 
 @mcp.tool()
@@ -103,7 +103,7 @@ def list_ad_schedules(
                 campaign_criterion.ad_schedule.end_minute,
                 campaign_criterion.bid_modifier
             FROM campaign_criterion
-            WHERE campaign.id = {campaign_id}
+            WHERE campaign.id = {validate_numeric_id(campaign_id, "campaign_id")}
                 AND campaign_criterion.type = 'AD_SCHEDULE'
         """
         response = service.search(customer_id=cid, query=query)
