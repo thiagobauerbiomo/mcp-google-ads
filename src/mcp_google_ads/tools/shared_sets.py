@@ -73,16 +73,17 @@ def create_shared_set(
     try:
         cid = resolve_customer_id(customer_id)
         client = get_client()
-        service = get_service("SharedSetService")
+        service = get_service("GoogleAdsService")
 
-        operation = client.get_type("SharedSetOperation")
-        shared_set = operation.create
+        mutate_op = client.get_type("MutateOperation")
+        shared_set = mutate_op.shared_set_operation.create
         shared_set.name = name
         validate_enum_value(set_type, "set_type")
         shared_set.type_ = getattr(client.enums.SharedSetTypeEnum, set_type)
 
-        response = service.mutate_shared_sets(customer_id=cid, operations=[operation])
-        resource_name = response.results[0].resource_name
+        response = service.mutate(customer_id=cid, mutate_operations=[mutate_op])
+        result = response.mutate_operation_responses[0].shared_set_result
+        resource_name = result.resource_name
         new_id = resource_name.split("/")[-1]
 
         return success_response(
@@ -103,14 +104,15 @@ def remove_shared_set(
     try:
         cid = resolve_customer_id(customer_id)
         client = get_client()
-        service = get_service("SharedSetService")
+        service = get_service("GoogleAdsService")
 
-        operation = client.get_type("SharedSetOperation")
-        operation.remove = f"customers/{cid}/sharedSets/{shared_set_id}"
+        mutate_op = client.get_type("MutateOperation")
+        mutate_op.shared_set_operation.remove = f"customers/{cid}/sharedSets/{shared_set_id}"
 
-        response = service.mutate_shared_sets(customer_id=cid, operations=[operation])
+        response = service.mutate(customer_id=cid, mutate_operations=[mutate_op])
+        result = response.mutate_operation_responses[0].shared_set_result
         return success_response(
-            {"resource_name": response.results[0].resource_name},
+            {"resource_name": result.resource_name},
             message=f"Shared set {shared_set_id} removed",
         )
     except Exception as e:
@@ -169,16 +171,17 @@ def link_shared_set_to_campaign(
     try:
         cid = resolve_customer_id(customer_id)
         client = get_client()
-        service = get_service("CampaignSharedSetService")
+        service = get_service("GoogleAdsService")
 
-        operation = client.get_type("CampaignSharedSetOperation")
-        campaign_shared_set = operation.create
-        campaign_shared_set.campaign = f"customers/{cid}/campaigns/{campaign_id}"
-        campaign_shared_set.shared_set = f"customers/{cid}/sharedSets/{shared_set_id}"
+        mutate_op = client.get_type("MutateOperation")
+        css = mutate_op.campaign_shared_set_operation.create
+        css.campaign = f"customers/{cid}/campaigns/{campaign_id}"
+        css.shared_set = f"customers/{cid}/sharedSets/{shared_set_id}"
 
-        response = service.mutate_campaign_shared_sets(customer_id=cid, operations=[operation])
+        response = service.mutate(customer_id=cid, mutate_operations=[mutate_op])
+        result = response.mutate_operation_responses[0].campaign_shared_set_result
         return success_response(
-            {"resource_name": response.results[0].resource_name},
+            {"resource_name": result.resource_name},
             message=f"Shared set {shared_set_id} linked to campaign {campaign_id}",
         )
     except Exception as e:
@@ -196,14 +199,17 @@ def unlink_shared_set_from_campaign(
     try:
         cid = resolve_customer_id(customer_id)
         client = get_client()
-        service = get_service("CampaignSharedSetService")
+        service = get_service("GoogleAdsService")
 
-        operation = client.get_type("CampaignSharedSetOperation")
-        operation.remove = f"customers/{cid}/campaignSharedSets/{campaign_id}~{shared_set_id}"
+        mutate_op = client.get_type("MutateOperation")
+        mutate_op.campaign_shared_set_operation.remove = (
+            f"customers/{cid}/campaignSharedSets/{campaign_id}~{shared_set_id}"
+        )
 
-        response = service.mutate_campaign_shared_sets(customer_id=cid, operations=[operation])
+        response = service.mutate(customer_id=cid, mutate_operations=[mutate_op])
+        result = response.mutate_operation_responses[0].campaign_shared_set_result
         return success_response(
-            {"resource_name": response.results[0].resource_name},
+            {"resource_name": result.resource_name},
             message=f"Shared set {shared_set_id} unlinked from campaign {campaign_id}",
         )
     except Exception as e:

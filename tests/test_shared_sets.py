@@ -78,8 +78,10 @@ class TestCreateSharedSet:
 
         mock_service = MagicMock()
         mock_response = MagicMock()
-        mock_response.results = [MagicMock(resource_name="customers/123/sharedSets/777")]
-        mock_service.mutate_shared_sets.return_value = mock_response
+        mock_shared_set_result = MagicMock(resource_name="customers/123/sharedSets/777")
+        mock_op_response = MagicMock(shared_set_result=mock_shared_set_result)
+        mock_response.mutate_operation_responses = [mock_op_response]
+        mock_service.mutate.return_value = mock_response
         mock_get_service.return_value = mock_service
 
         result = assert_success(create_shared_set("123", "New List"))
@@ -108,8 +110,10 @@ class TestRemoveSharedSet:
 
         mock_service = MagicMock()
         mock_response = MagicMock()
-        mock_response.results = [MagicMock(resource_name="customers/123/sharedSets/777")]
-        mock_service.mutate_shared_sets.return_value = mock_response
+        mock_shared_set_result = MagicMock(resource_name="customers/123/sharedSets/777")
+        mock_op_response = MagicMock(shared_set_result=mock_shared_set_result)
+        mock_response.mutate_operation_responses = [mock_op_response]
+        mock_service.mutate.return_value = mock_response
         mock_get_service.return_value = mock_service
 
         result = assert_success(remove_shared_set("123", "777"))
@@ -192,8 +196,10 @@ class TestLinkSharedSetToCampaign:
 
         mock_service = MagicMock()
         mock_response = MagicMock()
-        mock_response.results = [MagicMock(resource_name="customers/123/campaignSharedSets/111~777")]
-        mock_service.mutate_campaign_shared_sets.return_value = mock_response
+        mock_css_result = MagicMock(resource_name="customers/123/campaignSharedSets/111~777")
+        mock_op_response = MagicMock(campaign_shared_set_result=mock_css_result)
+        mock_response.mutate_operation_responses = [mock_op_response]
+        mock_service.mutate.return_value = mock_response
         mock_get_service.return_value = mock_service
 
         result = assert_success(link_shared_set_to_campaign("123", "111", "777"))
@@ -216,8 +222,10 @@ class TestUnlinkSharedSetFromCampaign:
 
         mock_service = MagicMock()
         mock_response = MagicMock()
-        mock_response.results = [MagicMock(resource_name="customers/123/campaignSharedSets/111~777")]
-        mock_service.mutate_campaign_shared_sets.return_value = mock_response
+        mock_css_result = MagicMock(resource_name="customers/123/campaignSharedSets/111~777")
+        mock_op_response = MagicMock(campaign_shared_set_result=mock_css_result)
+        mock_response.mutate_operation_responses = [mock_op_response]
+        mock_service.mutate.return_value = mock_response
         mock_get_service.return_value = mock_service
 
         result = assert_success(unlink_shared_set_from_campaign("123", "111", "777"))

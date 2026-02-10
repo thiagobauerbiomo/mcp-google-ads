@@ -293,24 +293,25 @@ def add_negative_keywords_to_shared_set(
         unique_keywords = list(dict.fromkeys(keywords))
 
         client = get_client()
-        service = get_service("SharedCriterionService")
+        service = get_service("GoogleAdsService")
 
-        operations = []
+        mutate_operations = []
         for kw_text in unique_keywords:
-            operation = client.get_type("SharedCriterionOperation")
-            criterion = operation.create
+            mutate_op = client.get_type("MutateOperation")
+            criterion = mutate_op.shared_criterion_operation.create
             criterion.shared_set = f"customers/{cid}/sharedSets/{shared_set_id}"
             criterion.keyword.text = kw_text
             validate_enum_value(match_type, "match_type")
             criterion.keyword.match_type = getattr(
                 client.enums.KeywordMatchTypeEnum, match_type
             )
-            operations.append(operation)
+            mutate_operations.append(mutate_op)
 
-        response = service.mutate_shared_criteria(customer_id=cid, operations=operations)
+        response = service.mutate(customer_id=cid, mutate_operations=mutate_operations)
+        added = len(response.mutate_operation_responses)
         return success_response(
-            {"added": len(response.results)},
-            message=f"{len(response.results)} negatives added to shared set {shared_set_id}",
+            {"added": added},
+            message=f"{added} negatives added to shared set {shared_set_id}",
         )
     except Exception as e:
         logger.error("Failed to add to shared set: %s", e, exc_info=True)

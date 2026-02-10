@@ -262,8 +262,8 @@ class TestAddNegativeKeywordsToSharedSet:
 
         mock_service = MagicMock()
         mock_response = MagicMock()
-        mock_response.results = [MagicMock(), MagicMock()]
-        mock_service.mutate_shared_criteria.return_value = mock_response
+        mock_response.mutate_operation_responses = [MagicMock(), MagicMock()]
+        mock_service.mutate.return_value = mock_response
         mock_get_service.return_value = mock_service
 
         result = assert_success(
@@ -280,8 +280,8 @@ class TestAddNegativeKeywordsToSharedSet:
 
         mock_service = MagicMock()
         mock_response = MagicMock()
-        mock_response.results = [MagicMock()]
-        mock_service.mutate_shared_criteria.return_value = mock_response
+        mock_response.mutate_operation_responses = [MagicMock()]
+        mock_service.mutate.return_value = mock_response
         mock_get_service.return_value = mock_service
 
         result = assert_success(
