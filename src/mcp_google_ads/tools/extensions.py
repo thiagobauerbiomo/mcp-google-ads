@@ -1,4 +1,4 @@
-"""Ad extension (asset) management tools (6 tools)."""
+"""Ad extension (asset) management tools (14 tools)."""
 
 from __future__ import annotations
 
@@ -212,3 +212,298 @@ def remove_asset(
         )
     except Exception as e:
         return error_response(f"Failed to remove asset: {e}")
+
+
+@mcp.tool()
+def create_image_asset(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    image_url: Annotated[str, "URL of the image to download and use"],
+    asset_name: Annotated[str, "Name for the image asset"],
+) -> str:
+    """Create an image asset from a URL.
+
+    The image will be downloaded and uploaded to Google Ads.
+    Supported formats: JPEG, PNG, GIF. Recommended sizes: 1200x628, 1200x1200, 128x128.
+    """
+    try:
+        import urllib.request
+
+        cid = resolve_customer_id(customer_id)
+        client = get_client()
+        service = get_service("AssetService")
+
+        image_data = urllib.request.urlopen(image_url).read()
+
+        operation = client.get_type("AssetOperation")
+        asset = operation.create
+        asset.name = asset_name
+        asset.type_ = client.enums.AssetTypeEnum.IMAGE
+        asset.image_asset.data = image_data
+
+        response = service.mutate_assets(customer_id=cid, operations=[operation])
+        resource_name = response.results[0].resource_name
+        return success_response(
+            {"resource_name": resource_name, "asset_id": resource_name.split("/")[-1]},
+            message=f"Image asset '{asset_name}' created from URL",
+        )
+    except Exception as e:
+        return error_response(f"Failed to create image asset: {e}")
+
+
+@mcp.tool()
+def create_video_asset(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    youtube_video_id: Annotated[str, "YouTube video ID (e.g., 'dQw4w9WgXcQ')"],
+    asset_name: Annotated[str, "Name for the video asset"],
+) -> str:
+    """Create a video asset from a YouTube video ID.
+
+    The video must be public or unlisted on YouTube.
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        client = get_client()
+        service = get_service("AssetService")
+
+        operation = client.get_type("AssetOperation")
+        asset = operation.create
+        asset.name = asset_name
+        asset.type_ = client.enums.AssetTypeEnum.YOUTUBE_VIDEO
+        asset.youtube_video_asset.youtube_video_id = youtube_video_id
+
+        response = service.mutate_assets(customer_id=cid, operations=[operation])
+        resource_name = response.results[0].resource_name
+        return success_response(
+            {"resource_name": resource_name, "asset_id": resource_name.split("/")[-1]},
+            message=f"Video asset '{asset_name}' created",
+        )
+    except Exception as e:
+        return error_response(f"Failed to create video asset: {e}")
+
+
+@mcp.tool()
+def create_lead_form_asset(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    headline: Annotated[str, "Lead form headline (max 30 chars)"],
+    business_name: Annotated[str, "Business name"],
+    description: Annotated[str, "Description text (max 200 chars)"],
+    fields: Annotated[list[str], "Fields: FULL_NAME, EMAIL, PHONE_NUMBER, POSTAL_CODE, CITY, WORK_EMAIL, COMPANY_NAME, etc."],
+    privacy_policy_url: Annotated[str, "Privacy policy URL"],
+    call_to_action: Annotated[str, "CTA: LEARN_MORE, GET_QUOTE, APPLY_NOW, SIGN_UP, CONTACT_US, SUBSCRIBE, DOWNLOAD, BOOK_NOW, GET_OFFER"] = "LEARN_MORE",
+) -> str:
+    """Create a lead form extension asset for collecting leads directly from ads.
+
+    Requires privacy policy URL. Fields determine what information is collected.
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        client = get_client()
+        service = get_service("AssetService")
+
+        operation = client.get_type("AssetOperation")
+        asset = operation.create
+        asset.name = f"Lead Form - {headline}"
+        lead_form = asset.lead_form_asset
+        lead_form.headline = headline
+        lead_form.business_name = business_name
+        lead_form.description = description
+        lead_form.privacy_policy_url = privacy_policy_url
+        lead_form.call_to_action_type = getattr(
+            client.enums.LeadFormCallToActionTypeEnum, call_to_action
+        )
+
+        for field_name in fields:
+            field_input = client.get_type("LeadFormField")
+            field_input.input_type = getattr(client.enums.LeadFormFieldUserInputTypeEnum, field_name)
+            lead_form.fields.append(field_input)
+
+        response = service.mutate_assets(customer_id=cid, operations=[operation])
+        resource_name = response.results[0].resource_name
+        return success_response(
+            {"resource_name": resource_name, "asset_id": resource_name.split("/")[-1]},
+            message=f"Lead form asset '{headline}' created with {len(fields)} fields",
+        )
+    except Exception as e:
+        return error_response(f"Failed to create lead form asset: {e}")
+
+
+@mcp.tool()
+def create_price_asset(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    price_type: Annotated[str, "Type: BRANDS, EVENTS, LOCATIONS, NEIGHBORHOODS, PRODUCT_CATEGORIES, PRODUCT_TIERS, SERVICES, SERVICE_CATEGORIES, SERVICE_TIERS"],
+    price_items: Annotated[list[dict], "List of {header, description, final_url, price_micros, currency_code, unit}"],
+    language_code: Annotated[str, "Language code (e.g., 'pt', 'en')"] = "pt",
+) -> str:
+    """Create a price extension asset showing products/services with prices.
+
+    Each price item needs: header, description, final_url, price_micros, currency_code.
+    Unit is optional: PER_HOUR, PER_DAY, PER_WEEK, PER_MONTH, PER_YEAR, PER_NIGHT.
+
+    Example: [{"header": "Basic", "description": "Starter plan", "final_url": "https://example.com/basic", "price_micros": 29900000, "currency_code": "BRL"}]
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        client = get_client()
+        service = get_service("AssetService")
+
+        operation = client.get_type("AssetOperation")
+        asset = operation.create
+        asset.name = f"Price Extension - {price_type}"
+        price_asset = asset.price_asset
+        price_asset.type_ = getattr(client.enums.PriceExtensionTypeEnum, price_type)
+        price_asset.language_code = language_code
+
+        for item in price_items:
+            price_offering = client.get_type("PriceOffering")
+            price_offering.header = item["header"]
+            price_offering.description = item["description"]
+            price_offering.final_url = item["final_url"]
+            price_offering.price.amount_micros = item["price_micros"]
+            price_offering.price.currency_code = item.get("currency_code", "BRL")
+            if "unit" in item:
+                price_offering.unit = getattr(client.enums.PriceExtensionPriceUnitEnum, item["unit"])
+            price_asset.price_offerings.append(price_offering)
+
+        response = service.mutate_assets(customer_id=cid, operations=[operation])
+        resource_name = response.results[0].resource_name
+        return success_response(
+            {"resource_name": resource_name, "asset_id": resource_name.split("/")[-1]},
+            message=f"Price asset created with {len(price_items)} items",
+        )
+    except Exception as e:
+        return error_response(f"Failed to create price asset: {e}")
+
+
+@mcp.tool()
+def create_promotion_asset(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    promotion_target: Annotated[str, "What is being promoted (max 20 chars)"],
+    final_url: Annotated[str, "Landing page URL"],
+    percent_off: Annotated[int | None, "Percentage discount (e.g., 20 for 20% off)"] = None,
+    money_off_micros: Annotated[int | None, "Monetary discount in micros"] = None,
+    currency_code: Annotated[str, "Currency code for money_off"] = "BRL",
+    occasion: Annotated[str | None, "Occasion: NEW_YEARS, VALENTINES_DAY, EASTER, MOTHERS_DAY, FATHERS_DAY, BLACK_FRIDAY, CYBER_MONDAY, CHRISTMAS, etc."] = None,
+    language_code: Annotated[str, "Language code"] = "pt",
+) -> str:
+    """Create a promotion extension asset for advertising sales and special offers."""
+    try:
+        cid = resolve_customer_id(customer_id)
+        client = get_client()
+        service = get_service("AssetService")
+
+        operation = client.get_type("AssetOperation")
+        asset = operation.create
+        asset.name = f"Promotion - {promotion_target}"
+        promo = asset.promotion_asset
+        promo.promotion_target = promotion_target
+        promo.final_url = final_url
+        promo.language_code = language_code
+
+        if percent_off is not None:
+            promo.percent_off = percent_off
+            promo.discount_modifier = client.enums.PromotionExtensionDiscountModifierEnum.UP_TO
+        elif money_off_micros is not None:
+            promo.money_amount_off.amount_micros = money_off_micros
+            promo.money_amount_off.currency_code = currency_code
+            promo.discount_modifier = client.enums.PromotionExtensionDiscountModifierEnum.UP_TO
+
+        if occasion:
+            promo.occasion = getattr(client.enums.PromotionExtensionOccasionEnum, occasion)
+
+        response = service.mutate_assets(customer_id=cid, operations=[operation])
+        resource_name = response.results[0].resource_name
+        return success_response(
+            {"resource_name": resource_name, "asset_id": resource_name.split("/")[-1]},
+            message=f"Promotion asset '{promotion_target}' created",
+        )
+    except Exception as e:
+        return error_response(f"Failed to create promotion asset: {e}")
+
+
+@mcp.tool()
+def link_asset_to_campaign(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    campaign_id: Annotated[str, "The campaign ID"],
+    asset_id: Annotated[str, "The asset ID to link"],
+    field_type: Annotated[str, "Asset field type: SITELINK, CALLOUT, STRUCTURED_SNIPPET, CALL, MOBILE_APP, HOTEL_CALLOUT, PRICE, PROMOTION, AD_IMAGE, LEAD_FORM, BUSINESS_LOGO"],
+) -> str:
+    """Link an asset (extension) to a campaign."""
+    try:
+        cid = resolve_customer_id(customer_id)
+        client = get_client()
+        service = get_service("CampaignAssetService")
+
+        operation = client.get_type("CampaignAssetOperation")
+        campaign_asset = operation.create
+        campaign_asset.campaign = f"customers/{cid}/campaigns/{campaign_id}"
+        campaign_asset.asset = f"customers/{cid}/assets/{asset_id}"
+        campaign_asset.field_type = getattr(client.enums.AssetFieldTypeEnum, field_type)
+
+        response = service.mutate_campaign_assets(customer_id=cid, operations=[operation])
+        return success_response(
+            {"resource_name": response.results[0].resource_name},
+            message=f"Asset {asset_id} linked to campaign {campaign_id} as {field_type}",
+        )
+    except Exception as e:
+        return error_response(f"Failed to link asset to campaign: {e}")
+
+
+@mcp.tool()
+def link_asset_to_ad_group(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    ad_group_id: Annotated[str, "The ad group ID"],
+    asset_id: Annotated[str, "The asset ID to link"],
+    field_type: Annotated[str, "Asset field type: SITELINK, CALLOUT, STRUCTURED_SNIPPET, CALL, MOBILE_APP, PRICE, PROMOTION, AD_IMAGE, LEAD_FORM"],
+) -> str:
+    """Link an asset (extension) to an ad group."""
+    try:
+        cid = resolve_customer_id(customer_id)
+        client = get_client()
+        service = get_service("AdGroupAssetService")
+
+        operation = client.get_type("AdGroupAssetOperation")
+        ad_group_asset = operation.create
+        ad_group_asset.ad_group = f"customers/{cid}/adGroups/{ad_group_id}"
+        ad_group_asset.asset = f"customers/{cid}/assets/{asset_id}"
+        ad_group_asset.field_type = getattr(client.enums.AssetFieldTypeEnum, field_type)
+
+        response = service.mutate_ad_group_assets(customer_id=cid, operations=[operation])
+        return success_response(
+            {"resource_name": response.results[0].resource_name},
+            message=f"Asset {asset_id} linked to ad group {ad_group_id} as {field_type}",
+        )
+    except Exception as e:
+        return error_response(f"Failed to link asset to ad group: {e}")
+
+
+@mcp.tool()
+def unlink_asset(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    resource_name: Annotated[str, "Full resource name of the asset link (e.g., customers/123/campaignAssets/456~789~SITELINK)"],
+    resource_type: Annotated[str, "Type: campaign or ad_group"] = "campaign",
+) -> str:
+    """Unlink an asset from a campaign or ad group.
+
+    Use the resource_name from the link (not the asset itself).
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        client = get_client()
+
+        if resource_type == "campaign":
+            service = get_service("CampaignAssetService")
+            operation = client.get_type("CampaignAssetOperation")
+            operation.remove = resource_name
+            response = service.mutate_campaign_assets(customer_id=cid, operations=[operation])
+        else:
+            service = get_service("AdGroupAssetService")
+            operation = client.get_type("AdGroupAssetOperation")
+            operation.remove = resource_name
+            response = service.mutate_ad_group_assets(customer_id=cid, operations=[operation])
+
+        return success_response(
+            {"resource_name": response.results[0].resource_name},
+            message=f"Asset unlinked from {resource_type}",
+        )
+    except Exception as e:
+        return error_response(f"Failed to unlink asset: {e}")

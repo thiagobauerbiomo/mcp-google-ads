@@ -1,4 +1,4 @@
-"""Reporting tools (8 tools)."""
+"""Reporting tools (14 tools)."""
 
 from __future__ import annotations
 
@@ -459,3 +459,386 @@ def change_history_report(
         return success_response({"changes": rows, "count": len(rows)})
     except Exception as e:
         return error_response(f"Failed to get change history: {e}")
+
+
+@mcp.tool()
+def device_performance_report(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    campaign_id: Annotated[str | None, "Filter by campaign ID"] = None,
+    date_range: Annotated[str, "Predefined range"] = "LAST_30_DAYS",
+    limit: Annotated[int, "Maximum results"] = 50,
+) -> str:
+    """Get performance metrics segmented by device (mobile, desktop, tablet)."""
+    try:
+        cid = resolve_customer_id(customer_id)
+        service = get_service("GoogleAdsService")
+        campaign_filter = f"AND campaign.id = {campaign_id}" if campaign_id else ""
+
+        query = f"""
+            SELECT
+                segments.device,
+                campaign.id,
+                campaign.name,
+                metrics.impressions,
+                metrics.clicks,
+                metrics.cost_micros,
+                metrics.conversions,
+                metrics.ctr,
+                metrics.average_cpc,
+                metrics.cost_per_conversion
+            FROM campaign
+            WHERE metrics.impressions > 0 {campaign_filter}
+            DURING {date_range}
+            ORDER BY metrics.cost_micros DESC
+            LIMIT {limit}
+        """
+        response = service.search(customer_id=cid, query=query)
+        rows = []
+        for row in response:
+            rows.append({
+                "device": row.segments.device.name,
+                "campaign_id": str(row.campaign.id),
+                "campaign_name": row.campaign.name,
+                "impressions": row.metrics.impressions,
+                "clicks": row.metrics.clicks,
+                "cost": format_micros(row.metrics.cost_micros),
+                "conversions": round(row.metrics.conversions, 2),
+                "ctr": round(row.metrics.ctr * 100, 2),
+                "avg_cpc": format_micros(row.metrics.average_cpc),
+                "cost_per_conversion": format_micros(row.metrics.cost_per_conversion),
+            })
+        return success_response({"report": rows, "count": len(rows)})
+    except Exception as e:
+        return error_response(f"Failed to get device performance: {e}")
+
+
+@mcp.tool()
+def hourly_performance_report(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    campaign_id: Annotated[str | None, "Filter by campaign ID"] = None,
+    date_range: Annotated[str, "Predefined range"] = "LAST_7_DAYS",
+    limit: Annotated[int, "Maximum results"] = 200,
+) -> str:
+    """Get performance metrics segmented by hour and day of week.
+
+    Useful for identifying best-performing times to set ad schedules.
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        service = get_service("GoogleAdsService")
+        campaign_filter = f"AND campaign.id = {campaign_id}" if campaign_id else ""
+
+        query = f"""
+            SELECT
+                segments.hour,
+                segments.day_of_week,
+                campaign.id,
+                campaign.name,
+                metrics.impressions,
+                metrics.clicks,
+                metrics.cost_micros,
+                metrics.conversions,
+                metrics.ctr
+            FROM campaign
+            WHERE metrics.impressions > 0 {campaign_filter}
+            DURING {date_range}
+            ORDER BY segments.day_of_week, segments.hour
+            LIMIT {limit}
+        """
+        response = service.search(customer_id=cid, query=query)
+        rows = []
+        for row in response:
+            rows.append({
+                "hour": row.segments.hour,
+                "day_of_week": row.segments.day_of_week.name,
+                "campaign_id": str(row.campaign.id),
+                "campaign_name": row.campaign.name,
+                "impressions": row.metrics.impressions,
+                "clicks": row.metrics.clicks,
+                "cost": format_micros(row.metrics.cost_micros),
+                "conversions": round(row.metrics.conversions, 2),
+                "ctr": round(row.metrics.ctr * 100, 2),
+            })
+        return success_response({"report": rows, "count": len(rows)})
+    except Exception as e:
+        return error_response(f"Failed to get hourly performance: {e}")
+
+
+@mcp.tool()
+def age_gender_performance_report(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    campaign_id: Annotated[str | None, "Filter by campaign ID"] = None,
+    date_range: Annotated[str, "Predefined range"] = "LAST_30_DAYS",
+    limit: Annotated[int, "Maximum results"] = 50,
+) -> str:
+    """Get performance metrics by age range and gender demographics.
+
+    Useful for understanding which demographics convert best.
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        service = get_service("GoogleAdsService")
+        campaign_filter = f"AND campaign.id = {campaign_id}" if campaign_id else ""
+
+        age_query = f"""
+            SELECT
+                ad_group_criterion.age_range.type,
+                campaign.id,
+                campaign.name,
+                metrics.impressions,
+                metrics.clicks,
+                metrics.cost_micros,
+                metrics.conversions,
+                metrics.ctr
+            FROM age_range_view
+            WHERE metrics.impressions > 0 {campaign_filter}
+            DURING {date_range}
+            ORDER BY metrics.impressions DESC
+            LIMIT {limit}
+        """
+        response = service.search(customer_id=cid, query=age_query)
+        age_rows = []
+        for row in response:
+            age_rows.append({
+                "age_range": row.ad_group_criterion.age_range.type_.name,
+                "campaign_id": str(row.campaign.id),
+                "campaign_name": row.campaign.name,
+                "impressions": row.metrics.impressions,
+                "clicks": row.metrics.clicks,
+                "cost": format_micros(row.metrics.cost_micros),
+                "conversions": round(row.metrics.conversions, 2),
+                "ctr": round(row.metrics.ctr * 100, 2),
+            })
+
+        gender_query = f"""
+            SELECT
+                ad_group_criterion.gender.type,
+                campaign.id,
+                campaign.name,
+                metrics.impressions,
+                metrics.clicks,
+                metrics.cost_micros,
+                metrics.conversions,
+                metrics.ctr
+            FROM gender_view
+            WHERE metrics.impressions > 0 {campaign_filter}
+            DURING {date_range}
+            ORDER BY metrics.impressions DESC
+            LIMIT {limit}
+        """
+        response = service.search(customer_id=cid, query=gender_query)
+        gender_rows = []
+        for row in response:
+            gender_rows.append({
+                "gender": row.ad_group_criterion.gender.type_.name,
+                "campaign_id": str(row.campaign.id),
+                "campaign_name": row.campaign.name,
+                "impressions": row.metrics.impressions,
+                "clicks": row.metrics.clicks,
+                "cost": format_micros(row.metrics.cost_micros),
+                "conversions": round(row.metrics.conversions, 2),
+                "ctr": round(row.metrics.ctr * 100, 2),
+            })
+
+        return success_response({
+            "age_report": age_rows,
+            "gender_report": gender_rows,
+            "age_count": len(age_rows),
+            "gender_count": len(gender_rows),
+        })
+    except Exception as e:
+        return error_response(f"Failed to get age/gender performance: {e}")
+
+
+@mcp.tool()
+def placement_report(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    campaign_id: Annotated[str | None, "Filter by campaign ID"] = None,
+    date_range: Annotated[str, "Predefined range"] = "LAST_30_DAYS",
+    limit: Annotated[int, "Maximum results"] = 100,
+) -> str:
+    """Get placement performance for Display/Video campaigns.
+
+    Shows which websites, apps, and YouTube channels/videos showed your ads.
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        service = get_service("GoogleAdsService")
+        campaign_filter = f"AND campaign.id = {campaign_id}" if campaign_id else ""
+
+        query = f"""
+            SELECT
+                detail_placement_view.display_name,
+                detail_placement_view.target_url,
+                detail_placement_view.placement_type,
+                campaign.id,
+                campaign.name,
+                metrics.impressions,
+                metrics.clicks,
+                metrics.cost_micros,
+                metrics.conversions,
+                metrics.ctr
+            FROM detail_placement_view
+            WHERE metrics.impressions > 0 {campaign_filter}
+            DURING {date_range}
+            ORDER BY metrics.impressions DESC
+            LIMIT {limit}
+        """
+        response = service.search(customer_id=cid, query=query)
+        rows = []
+        for row in response:
+            rows.append({
+                "display_name": row.detail_placement_view.display_name,
+                "target_url": row.detail_placement_view.target_url,
+                "placement_type": row.detail_placement_view.placement_type.name,
+                "campaign_id": str(row.campaign.id),
+                "campaign_name": row.campaign.name,
+                "impressions": row.metrics.impressions,
+                "clicks": row.metrics.clicks,
+                "cost": format_micros(row.metrics.cost_micros),
+                "conversions": round(row.metrics.conversions, 2),
+                "ctr": round(row.metrics.ctr * 100, 2),
+            })
+        return success_response({"report": rows, "count": len(rows)})
+    except Exception as e:
+        return error_response(f"Failed to get placement report: {e}")
+
+
+@mcp.tool()
+def quality_score_report(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    campaign_id: Annotated[str | None, "Filter by campaign ID"] = None,
+    limit: Annotated[int, "Maximum results"] = 100,
+) -> str:
+    """Get detailed quality score data for keywords.
+
+    Includes quality score, expected CTR, ad relevance, and landing page experience.
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        service = get_service("GoogleAdsService")
+        campaign_filter = f"AND campaign.id = {campaign_id}" if campaign_id else ""
+
+        query = f"""
+            SELECT
+                ad_group_criterion.keyword.text,
+                ad_group_criterion.keyword.match_type,
+                ad_group_criterion.quality_info.quality_score,
+                ad_group_criterion.quality_info.creative_quality_score,
+                ad_group_criterion.quality_info.post_click_quality_score,
+                ad_group_criterion.quality_info.search_predicted_ctr,
+                ad_group.id,
+                ad_group.name,
+                campaign.id,
+                campaign.name
+            FROM ad_group_criterion
+            WHERE ad_group_criterion.type = 'KEYWORD'
+                AND ad_group_criterion.status = 'ENABLED'
+                {campaign_filter}
+            ORDER BY ad_group_criterion.quality_info.quality_score ASC
+            LIMIT {limit}
+        """
+        response = service.search(customer_id=cid, query=query)
+        rows = []
+        for row in response:
+            rows.append({
+                "keyword": row.ad_group_criterion.keyword.text,
+                "match_type": row.ad_group_criterion.keyword.match_type.name,
+                "quality_score": row.ad_group_criterion.quality_info.quality_score,
+                "ad_relevance": row.ad_group_criterion.quality_info.creative_quality_score.name,
+                "landing_page_experience": row.ad_group_criterion.quality_info.post_click_quality_score.name,
+                "expected_ctr": row.ad_group_criterion.quality_info.search_predicted_ctr.name,
+                "ad_group_id": str(row.ad_group.id),
+                "ad_group_name": row.ad_group.name,
+                "campaign_id": str(row.campaign.id),
+                "campaign_name": row.campaign.name,
+            })
+        return success_response({"report": rows, "count": len(rows)})
+    except Exception as e:
+        return error_response(f"Failed to get quality score report: {e}")
+
+
+@mcp.tool()
+def comparison_report(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    campaign_id: Annotated[str | None, "Filter by campaign ID"] = None,
+    current_start: Annotated[str, "Current period start date (YYYY-MM-DD)"] = "",
+    current_end: Annotated[str, "Current period end date (YYYY-MM-DD)"] = "",
+    previous_start: Annotated[str, "Previous period start date (YYYY-MM-DD)"] = "",
+    previous_end: Annotated[str, "Previous period end date (YYYY-MM-DD)"] = "",
+) -> str:
+    """Compare campaign performance between two date ranges.
+
+    Returns metrics for both periods plus calculated deltas (absolute and percentage changes).
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        service = get_service("GoogleAdsService")
+        campaign_filter = f"AND campaign.id = {campaign_id}" if campaign_id else ""
+
+        def _run_query(start: str, end: str) -> dict:
+            query = f"""
+                SELECT
+                    campaign.id,
+                    campaign.name,
+                    metrics.impressions,
+                    metrics.clicks,
+                    metrics.cost_micros,
+                    metrics.conversions,
+                    metrics.conversions_value,
+                    metrics.ctr,
+                    metrics.average_cpc
+                FROM campaign
+                WHERE segments.date BETWEEN '{start}' AND '{end}'
+                    {campaign_filter}
+                ORDER BY metrics.cost_micros DESC
+            """
+            response = service.search(customer_id=cid, query=query)
+            totals: dict = {
+                "impressions": 0, "clicks": 0, "cost_micros": 0,
+                "conversions": 0.0, "conversion_value": 0.0,
+            }
+            campaigns_data = []
+            for row in response:
+                totals["impressions"] += row.metrics.impressions
+                totals["clicks"] += row.metrics.clicks
+                totals["cost_micros"] += row.metrics.cost_micros
+                totals["conversions"] += row.metrics.conversions
+                totals["conversion_value"] += row.metrics.conversions_value
+                campaigns_data.append({
+                    "campaign_id": str(row.campaign.id),
+                    "campaign_name": row.campaign.name,
+                    "impressions": row.metrics.impressions,
+                    "clicks": row.metrics.clicks,
+                    "cost": format_micros(row.metrics.cost_micros),
+                    "conversions": round(row.metrics.conversions, 2),
+                })
+            totals["cost"] = format_micros(totals["cost_micros"])
+            totals["ctr"] = round((totals["clicks"] / totals["impressions"] * 100), 2) if totals["impressions"] > 0 else 0
+            return {"totals": totals, "campaigns": campaigns_data}
+
+        current = _run_query(current_start, current_end)
+        previous = _run_query(previous_start, previous_end)
+
+        def _calc_delta(current_val: float, previous_val: float) -> dict:
+            delta = current_val - previous_val
+            pct = round((delta / previous_val * 100), 2) if previous_val != 0 else 0
+            return {"delta": round(delta, 2), "pct_change": pct}
+
+        ct = current["totals"]
+        pt = previous["totals"]
+        deltas = {
+            "impressions": _calc_delta(ct["impressions"], pt["impressions"]),
+            "clicks": _calc_delta(ct["clicks"], pt["clicks"]),
+            "cost": _calc_delta(ct["cost_micros"], pt["cost_micros"]),
+            "conversions": _calc_delta(ct["conversions"], pt["conversions"]),
+            "ctr": _calc_delta(ct["ctr"], pt["ctr"]),
+        }
+
+        return success_response({
+            "current_period": {"start": current_start, "end": current_end, **current},
+            "previous_period": {"start": previous_start, "end": previous_end, **previous},
+            "deltas": deltas,
+        })
+    except Exception as e:
+        return error_response(f"Failed to generate comparison report: {e}")

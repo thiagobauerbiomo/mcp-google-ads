@@ -9,17 +9,25 @@ from .coordinator import mcp
 
 # Import all tool modules so they register with the coordinator
 from .tools import (  # noqa: F401
+    account_management,
     accounts,
     ad_groups,
     ads,
     audiences,
     bidding,
     budgets,
+    campaign_types,
     campaigns,
+    conversions,
+    experiments,
     extensions,
     keywords,
+    labels,
+    recommendations,
     reporting,
     search,
+    shared_sets,
+    targeting,
 )
 
 

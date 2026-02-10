@@ -67,6 +67,28 @@ def get_search_request(customer_id: str, query: str):
     return request
 
 
+def _retry_with_backoff(func, *args, max_retries: int = 3, **kwargs):
+    """Retry a function call with exponential backoff for transient errors.
+
+    Retries on ServiceUnavailable, DeadlineExceeded, and InternalServerError.
+    """
+    import time
+
+    from google.api_core.exceptions import DeadlineExceeded, InternalServerError, ServiceUnavailable
+
+    retryable = (ServiceUnavailable, DeadlineExceeded, InternalServerError)
+
+    for attempt in range(max_retries):
+        try:
+            return func(*args, **kwargs)
+        except retryable as e:
+            if attempt == max_retries - 1:
+                raise
+            wait = 2 ** attempt
+            logger.warning("Transient error (attempt %d/%d), retrying in %ds: %s", attempt + 1, max_retries, wait, e)
+            time.sleep(wait)
+
+
 def reset_client() -> None:
     """Reset client singleton (for testing)."""
     global _client, _config

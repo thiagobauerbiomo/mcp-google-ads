@@ -78,3 +78,51 @@ def to_micros(amount: float) -> int:
 def build_resource_name(resource_type: str, customer_id: str, resource_id: str) -> str:
     """Build a Google Ads resource name string."""
     return f"customers/{customer_id}/{resource_type}/{resource_id}"
+
+
+def paginate_search(service, customer_id: str, query: str, page_size: int = 1000) -> list:
+    """Execute a GAQL query with explicit pagination, collecting all results.
+
+    Useful for large result sets that exceed the default page size.
+    """
+    all_rows = []
+    request = {
+        "customer_id": customer_id,
+        "query": query,
+        "page_size": page_size,
+    }
+    response = service.search(request=request)
+    for row in response:
+        all_rows.append(row)
+    return all_rows
+
+
+def log_tool_call(tool_name: str, customer_id: str, **params) -> None:
+    """Log a structured tool call for debugging and auditing."""
+    filtered_params = {k: v for k, v in params.items() if v is not None}
+    logger.info(
+        "Tool call: %s | customer: %s | params: %s",
+        tool_name,
+        customer_id,
+        filtered_params,
+    )
+
+
+def log_api_error(tool_name: str, error: Exception, customer_id: str) -> None:
+    """Log a structured API error."""
+    logger.error(
+        "API error in %s | customer: %s | error: %s",
+        tool_name,
+        customer_id,
+        error,
+    )
+
+
+def handle_rate_limit(error: Exception) -> bool:
+    """Check if an error is a rate limit / quota exceeded error.
+
+    Returns True if the error is a quota/rate limit error, False otherwise.
+    """
+    error_str = str(error).lower()
+    quota_indicators = ["quota", "rate limit", "resource_exhausted", "too many requests"]
+    return any(indicator in error_str for indicator in quota_indicators)
