@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+from mcp_google_ads.tools.reporting import pmax_search_term_insights
 from tests.conftest import assert_error, assert_success
 
 # --- Helpers internos: _build_where e _run_report ---
@@ -1022,3 +1023,45 @@ class TestKeywordPerformanceReport:
 
         result = assert_error(keyword_performance_report("123", ad_group_id="abc"))
         assert "inválido" in result["error"]
+
+
+class TestPmaxSearchTermInsights:
+    @patch("mcp_google_ads.tools.reporting.get_service")
+    @patch("mcp_google_ads.tools.reporting.resolve_customer_id", return_value="123")
+    def test_success(self, mock_resolve, mock_get_service):
+        row = MagicMock()
+        row.campaign_search_term_insight.category_label = "web design services"
+        row.campaign_search_term_insight.id = 12345
+        row.campaign_search_term_insight.campaign_id = 111
+        mock_service = MagicMock()
+        mock_service.search.return_value = [row]
+        mock_get_service.return_value = mock_service
+
+        result = pmax_search_term_insights(customer_id="123")
+        data = assert_success(result)
+        assert data["data"]["count"] == 1
+        assert data["data"]["insights"][0]["category_label"] == "web design services"
+
+    @patch("mcp_google_ads.tools.reporting.get_service")
+    @patch("mcp_google_ads.tools.reporting.resolve_customer_id", return_value="123")
+    def test_with_campaign_filter(self, mock_resolve, mock_get_service):
+        mock_service = MagicMock()
+        mock_service.search.return_value = []
+        mock_get_service.return_value = mock_service
+
+        result = pmax_search_term_insights(customer_id="123", campaign_id="456")
+        data = assert_success(result)
+        assert data["data"]["count"] == 0
+        query = mock_service.search.call_args.kwargs["query"]
+        assert "campaign_search_term_insight.campaign_id = 456" in query
+
+    @patch("mcp_google_ads.tools.reporting.get_service")
+    @patch("mcp_google_ads.tools.reporting.resolve_customer_id", return_value="123")
+    def test_error(self, mock_resolve, mock_get_service):
+        mock_service = MagicMock()
+        mock_service.search.side_effect = Exception("API error")
+        mock_get_service.return_value = mock_service
+
+        result = pmax_search_term_insights(customer_id="123")
+        error_data = assert_error(result)
+        assert "Failed to get PMax search term insights" in error_data["error"]

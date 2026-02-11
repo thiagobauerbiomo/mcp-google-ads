@@ -5,7 +5,7 @@
 src/mcp_google_ads/
 ├── __init__.py        # __version__ = "0.1.0"
 ├── server.py          # Entry point (importa tools, roda mcp.run(), LOG_LEVEL via env)
-├── coordinator.py     # Singleton FastMCP("google-ads") com instructions detalhadas (129 tools)
+├── coordinator.py     # Singleton FastMCP("google-ads") com instructions detalhadas (142 tools)
 ├── auth.py            # GoogleAdsClient singleton via OAuth2 (retry com backoff exponencial)
 ├── config.py          # GoogleAdsConfig dataclass (env vars)
 ├── utils.py           # Helpers: resolve_customer_id, proto_to_dict, success/error_response,
@@ -17,15 +17,15 @@ src/mcp_google_ads/
     ├── accounts.py           #  4: list_accessible_customers, get_customer_info, get_account_hierarchy, list_customer_clients
     ├── account_management.py #  3: list_account_links, get_billing_info, list_account_users
     ├── campaigns.py          #  7: list, get, create, update, set_status, remove, list_labels
-    ├── campaign_types.py     #  8: create_pmax, list/update_asset_groups, create_display/video/shopping/demand_gen/app
+    ├── campaign_types.py     # 14: create_pmax, list/update_asset_groups, create_display/video/shopping/demand_gen/app, create_asset_group, add/remove/list_asset_group_assets, create/list_listing_group_filters
     ├── ad_groups.py          #  6: list, get, create, update, set_status, remove
     ├── ads.py                #  6: list, get, create_rsa, update, set_status, get_strength
     ├── keywords.py           #  9: list, add, update, remove, neg_campaign, neg_shared, generate_ideas, forecast, list_negative
     ├── budgets.py            #  5: list, get, create, update, remove
     ├── bidding.py            #  5: list, get, create, update, set_campaign_strategy
-    ├── reporting.py          # 14: campaign/adgroup/ad/keyword perf, search_terms, audience, geo, change_history, device, hourly, age_gender, placement, quality_score, comparison
+    ├── reporting.py          # 15: campaign/adgroup/ad/keyword perf, search_terms, audience, geo, change_history, device, hourly, age_gender, placement, quality_score, comparison, pmax_search_term_insights
     ├── dashboard.py          #  2: mcc_performance_summary, account_dashboard
-    ├── audiences.py          #  6: list_segments, add_targeting, remove_targeting, suggest_geo, list_targeting, add_audience
+    ├── audiences.py          # 12: list_segments, add/remove_targeting, suggest_geo, list_targeting, add/remove_audience_ad_group, create_custom_audience, add_audience/search_theme_signal, list/remove_asset_group_signals
     ├── extensions.py         # 16: list_assets, sitelinks, callouts, snippets, call, remove, image, video, lead_form, price, promotion, link_campaign, link_ad_group, unlink, unlink_customer_assets
     ├── labels.py             #  8: list, create, remove, apply_to_campaign/ad_group/ad/keyword, remove_from_resource
     ├── shared_sets.py        #  6: list, create, remove, list_members, link_to_campaign, unlink_from_campaign
@@ -105,7 +105,7 @@ Todos os 14 reports suportam datas customizadas:
 - Auth com retry e backoff exponencial (3 tentativas)
 - Timeout de 30s em create_image_asset (urllib)
 
-## Testes (561 testes, 96% cobertura)
+## Testes (597 testes, 96% cobertura)
 Cobertura de todos os 20 modulos de tools + utils, config, auth, server:
 ```
 tests/
@@ -115,18 +115,18 @@ tests/
 ├── test_auth.py             #  4 testes
 ├── test_server.py           #  2 testes (main + LOG_LEVEL)
 ├── test_campaigns.py        # 36 testes (todas as 7 tools, status, labels, error paths)
-├── test_campaign_types.py   # 34 testes (todas as 8 tools, PMax, Display, Video, Shopping, DemandGen, App)
+├── test_campaign_types.py   # 51 testes (todas as 14 tools, PMax, Display, Video, Shopping, DemandGen, App, asset groups, listing groups)
 ├── test_ad_groups.py        # 36 testes (todas as 6 tools, validação, error paths)
 ├── test_ads.py              # 51 testes (todas as 6 tools, RSA com pins, status, strength)
 ├── test_keywords.py         # 38 testes (todas as 9 tools, batch, dedup, forecast, geo, CPA)
-├── test_reporting.py        # 55 testes (_run_report, _build_where, 14 reports)
+├── test_reporting.py        # 58 testes (_run_report, _build_where, 15 reports incl. pmax_search_term_insights)
 ├── test_labels.py           # 18 testes (todas as 8 tools, apply/remove)
 ├── test_conversions.py      # 16 testes (CRUD, offline import, batch, goals)
 ├── test_shared_sets.py      # 18 testes (todas as 6 tools, members, link/unlink)
 ├── test_targeting.py        # 29 testes (todas as 12 tools, device bid, schedules, geo, language, age/gender/income bid, demographic batch)
 ├── test_search.py           #  7 testes (execute_gaql protections)
 ├── test_dashboard.py        #  4 testes
-├── test_audiences.py        # 17 testes (todas as 6 tools, bid modifiers, geo suggestions)
+├── test_audiences.py        # 33 testes (todas as 12 tools, bid modifiers, geo suggestions, custom audiences, signals)
 ├── test_bidding.py          # 26 testes (todas as 5 tools, all strategy types, update fields)
 ├── test_extensions.py       # 33 testes (16 tools, image URL, batch, customer_asset unlink)
 ├── test_recommendations.py  # 15 testes (todas as 5 tools, metrics, apply/dismiss)
@@ -136,8 +136,8 @@ tests/
 └── test_budgets.py          # 38 testes (todas as 5 tools + micros + delivery_method + remove)
 ```
 
-Modulos com 100% cobertura (18): auth, config, coordinator, exceptions, __init__, tools/__init__, accounts, account_management, ad_groups, ads, audiences, budgets, campaign_types, experiments, recommendations, search, shared_sets, targeting
-Modulos acima de 90%: campaigns (99%), bidding (98%), utils (98%), keywords (97%), labels (94%), server (93%), conversions (91%), reporting (90%)
+Modulos com 100% cobertura (16): auth, config, coordinator, exceptions, __init__, tools/__init__, accounts, account_management, ad_groups, ads, budgets, experiments, recommendations, search, shared_sets
+Modulos acima de 90%: audiences (99%), campaigns (98%), bidding (98%), keywords (98%), campaign_types (97%), labels (94%), utils (94%), server (93%), targeting (92%), conversions (91%), reporting (90%)
 Modulos acima de 85%: dashboard (89%), extensions (86%)
 
 ## Dependencias Principais

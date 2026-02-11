@@ -1,4 +1,4 @@
-"""Campaign type creation tools — Performance Max, Display, Video, Shopping, Demand Gen, App (8 tools)."""
+"""Campaign type creation tools — Performance Max, Display, Video, Shopping, Demand Gen, App (14 tools)."""
 
 from __future__ import annotations
 
@@ -555,3 +555,282 @@ def create_app_campaign(
     except Exception as e:
         logger.error("Failed to create App campaign: %s", e, exc_info=True)
         return error_response(f"Failed to create App campaign: {e}")
+
+
+@mcp.tool()
+def create_asset_group(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    campaign_id: Annotated[str, "The PMax campaign ID"],
+    name: Annotated[str, "Asset group name"],
+    final_urls: Annotated[list[str], "Final URLs for the asset group"],
+    path1: Annotated[str | None, "First URL path (e.g., 'sites')"] = None,
+    path2: Annotated[str | None, "Second URL path (e.g., 'profissionais')"] = None,
+) -> str:
+    """Create a new asset group for an existing Performance Max campaign.
+
+    Created PAUSED by default. Also creates the required listing group filter (UNIT_INCLUDED).
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        safe_campaign = validate_numeric_id(campaign_id, "campaign_id")
+        client = get_client()
+
+        operations = []
+
+        # Asset group
+        ag_op = client.get_type("MutateOperation")
+        asset_group = ag_op.asset_group_operation.create
+        asset_group.name = name
+        asset_group.campaign = f"customers/{cid}/campaigns/{safe_campaign}"
+        asset_group.status = client.enums.AssetGroupStatusEnum.PAUSED
+        for url in final_urls:
+            asset_group.final_urls.append(url)
+        if path1:
+            asset_group.path1 = path1
+        if path2:
+            asset_group.path2 = path2
+        temp_ag_rn = f"customers/{cid}/assetGroups/-1"
+        asset_group.resource_name = temp_ag_rn
+        operations.append(ag_op)
+
+        # Listing group filter (required for PMax)
+        lg_op = client.get_type("MutateOperation")
+        listing_group = lg_op.asset_group_listing_group_filter_operation.create
+        listing_group.asset_group = temp_ag_rn
+        listing_group.type_ = client.enums.ListingGroupFilterTypeEnum.UNIT_INCLUDED
+        operations.append(lg_op)
+
+        gads_service = get_service("GoogleAdsService")
+        response = gads_service.mutate(customer_id=cid, mutate_operations=operations)
+
+        ag_rn = response.mutate_operation_responses[0].asset_group_result.resource_name
+        ag_id = ag_rn.split("/")[-1]
+
+        return success_response(
+            {"asset_group_id": ag_id, "resource_name": ag_rn},
+            message=f"Asset group '{name}' created as PAUSED for campaign {campaign_id}",
+        )
+    except Exception as e:
+        logger.error("Failed to create asset group: %s", e, exc_info=True)
+        return error_response(f"Failed to create asset group: {e}")
+
+
+@mcp.tool()
+def add_asset_to_asset_group(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    asset_group_id: Annotated[str, "The asset group ID"],
+    asset_id: Annotated[str, "The asset ID to link"],
+    field_type: Annotated[str, "Asset field type: HEADLINE, DESCRIPTION, LONG_HEADLINE, BUSINESS_NAME, MARKETING_IMAGE, SQUARE_MARKETING_IMAGE, LOGO, LANDSCAPE_LOGO, YOUTUBE_VIDEO, PORTRAIT_MARKETING_IMAGE, CALL_TO_ACTION_SELECTION"],
+) -> str:
+    """Link an existing asset to an asset group (Performance Max).
+
+    Use create_image_asset/create_video_asset first to create the asset, then link it here.
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        safe_ag = validate_numeric_id(asset_group_id, "asset_group_id")
+        safe_asset = validate_numeric_id(asset_id, "asset_id")
+        validate_enum_value(field_type, "field_type")
+        client = get_client()
+        service = get_service("AssetGroupAssetService")
+
+        operation = client.get_type("AssetGroupAssetOperation")
+        link = operation.create
+        link.asset_group = f"customers/{cid}/assetGroups/{safe_ag}"
+        link.asset = f"customers/{cid}/assets/{safe_asset}"
+        link.field_type = getattr(client.enums.AssetFieldTypeEnum, field_type)
+
+        response = service.mutate_asset_group_assets(customer_id=cid, operations=[operation])
+        return success_response(
+            {"resource_name": response.results[0].resource_name},
+            message=f"Asset {asset_id} linked to asset group {asset_group_id} as {field_type}",
+        )
+    except Exception as e:
+        logger.error("Failed to add asset to asset group: %s", e, exc_info=True)
+        return error_response(f"Failed to add asset to asset group: {e}")
+
+
+@mcp.tool()
+def remove_asset_from_asset_group(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    asset_group_id: Annotated[str, "The asset group ID"],
+    asset_id: Annotated[str, "The asset ID to unlink"],
+    field_type: Annotated[str, "Asset field type: HEADLINE, DESCRIPTION, LONG_HEADLINE, etc."],
+) -> str:
+    """Remove (unlink) an asset from an asset group."""
+    try:
+        cid = resolve_customer_id(customer_id)
+        safe_ag = validate_numeric_id(asset_group_id, "asset_group_id")
+        safe_asset = validate_numeric_id(asset_id, "asset_id")
+        validate_enum_value(field_type, "field_type")
+        client = get_client()
+        service = get_service("AssetGroupAssetService")
+
+        operation = client.get_type("AssetGroupAssetOperation")
+        operation.remove = f"customers/{cid}/assetGroupAssets/{safe_ag}~{safe_asset}~{field_type}"
+
+        response = service.mutate_asset_group_assets(customer_id=cid, operations=[operation])
+        return success_response(
+            {"resource_name": response.results[0].resource_name},
+            message=f"Asset {asset_id} removed from asset group {asset_group_id}",
+        )
+    except Exception as e:
+        logger.error("Failed to remove asset from asset group: %s", e, exc_info=True)
+        return error_response(f"Failed to remove asset from asset group: {e}")
+
+
+@mcp.tool()
+def list_asset_group_assets(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    asset_group_id: Annotated[str, "The asset group ID"],
+    field_type: Annotated[str | None, "Filter by field type: HEADLINE, DESCRIPTION, MARKETING_IMAGE, etc."] = None,
+    limit: Annotated[int, "Maximum results"] = 100,
+) -> str:
+    """List all assets linked to an asset group with their types and details."""
+    try:
+        cid = resolve_customer_id(customer_id)
+        safe_ag = validate_numeric_id(asset_group_id, "asset_group_id")
+        limit = validate_limit(limit)
+        service = get_service("GoogleAdsService")
+
+        type_filter = ""
+        if field_type:
+            validate_enum_value(field_type, "field_type")
+            type_filter = f"AND asset_group_asset.field_type = '{field_type}'"
+
+        query = f"""
+            SELECT
+                asset_group_asset.asset,
+                asset_group_asset.field_type,
+                asset_group_asset.status,
+                asset.id,
+                asset.name,
+                asset.type,
+                asset.text_asset.text,
+                asset.image_asset.full_size.url
+            FROM asset_group_asset
+            WHERE asset_group.id = {safe_ag} {type_filter}
+            LIMIT {limit}
+        """
+        response = service.search(customer_id=cid, query=query)
+        assets = []
+        for row in response:
+            asset_data = {
+                "asset_id": str(row.asset.id),
+                "asset_name": row.asset.name,
+                "field_type": row.asset_group_asset.field_type.name,
+                "status": row.asset_group_asset.status.name,
+                "asset_type": row.asset.type_.name,
+            }
+            if row.asset.text_asset.text:
+                asset_data["text"] = row.asset.text_asset.text
+            if row.asset.image_asset.full_size.url:
+                asset_data["image_url"] = row.asset.image_asset.full_size.url
+            assets.append(asset_data)
+        return success_response({"assets": assets, "count": len(assets)})
+    except Exception as e:
+        logger.error("Failed to list asset group assets: %s", e, exc_info=True)
+        return error_response(f"Failed to list asset group assets: {e}")
+
+
+@mcp.tool()
+def create_listing_group_filter(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    asset_group_id: Annotated[str, "The asset group ID"],
+    filter_type: Annotated[str, "Filter type: UNIT_INCLUDED, UNIT_EXCLUDED, SUBDIVISION"],
+    parent_filter_id: Annotated[str | None, "Parent listing group filter ID (for child nodes)"] = None,
+    dimension_type: Annotated[str | None, "Dimension: product_brand, product_condition, product_type, product_channel, product_item_id, product_category, product_custom_attribute"] = None,
+    dimension_value: Annotated[str | None, "Dimension value (e.g., brand name, 'NEW', type name)"] = None,
+) -> str:
+    """Create a listing group filter for asset group (product targeting in PMax/Shopping).
+
+    Root filter: just filter_type (SUBDIVISION for branching, UNIT_INCLUDED for all products).
+    Child filter: provide parent_filter_id + dimension_type + dimension_value.
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        safe_ag = validate_numeric_id(asset_group_id, "asset_group_id")
+        validate_enum_value(filter_type, "filter_type")
+        client = get_client()
+        service = get_service("AssetGroupListingGroupFilterService")
+
+        operation = client.get_type("AssetGroupListingGroupFilterOperation")
+        lg_filter = operation.create
+        lg_filter.asset_group = f"customers/{cid}/assetGroups/{safe_ag}"
+        lg_filter.type_ = getattr(client.enums.ListingGroupFilterTypeEnum, filter_type)
+
+        if parent_filter_id:
+            safe_parent = validate_numeric_id(parent_filter_id, "parent_filter_id")
+            lg_filter.parent_listing_group_filter = (
+                f"customers/{cid}/assetGroupListingGroupFilters/{safe_ag}~{safe_parent}"
+            )
+
+        if dimension_type and dimension_value:
+            case_value = lg_filter.case_value
+            if dimension_type == "product_brand":
+                case_value.product_brand.value = dimension_value
+            elif dimension_type == "product_condition":
+                validate_enum_value(dimension_value, "product_condition")
+                case_value.product_condition.condition = getattr(
+                    client.enums.ListingGroupFilterProductConditionEnum, dimension_value
+                )
+            elif dimension_type == "product_type":
+                case_value.product_type_l1.value = dimension_value
+            elif dimension_type == "product_channel":
+                validate_enum_value(dimension_value, "product_channel")
+                case_value.product_channel.channel = getattr(
+                    client.enums.ListingGroupFilterProductChannelEnum, dimension_value
+                )
+            elif dimension_type == "product_item_id":
+                case_value.product_item_id.value = dimension_value
+            elif dimension_type == "product_custom_attribute":
+                case_value.product_custom_attribute.value = dimension_value
+
+        response = service.mutate_asset_group_listing_group_filters(
+            customer_id=cid, operations=[operation]
+        )
+        return success_response(
+            {"resource_name": response.results[0].resource_name},
+            message=f"Listing group filter ({filter_type}) created for asset group {asset_group_id}",
+        )
+    except Exception as e:
+        logger.error("Failed to create listing group filter: %s", e, exc_info=True)
+        return error_response(f"Failed to create listing group filter: {e}")
+
+
+@mcp.tool()
+def list_listing_group_filters(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    asset_group_id: Annotated[str, "The asset group ID"],
+    limit: Annotated[int, "Maximum results"] = 100,
+) -> str:
+    """List all listing group filters (product targeting) for an asset group."""
+    try:
+        cid = resolve_customer_id(customer_id)
+        safe_ag = validate_numeric_id(asset_group_id, "asset_group_id")
+        limit = validate_limit(limit)
+        service = get_service("GoogleAdsService")
+
+        query = f"""
+            SELECT
+                asset_group_listing_group_filter.id,
+                asset_group_listing_group_filter.type,
+                asset_group_listing_group_filter.parent_listing_group_filter,
+                asset_group_listing_group_filter.resource_name
+            FROM asset_group_listing_group_filter
+            WHERE asset_group.id = {safe_ag}
+            LIMIT {limit}
+        """
+        response = service.search(customer_id=cid, query=query)
+        filters = []
+        for row in response:
+            filters.append({
+                "filter_id": str(row.asset_group_listing_group_filter.id),
+                "type": row.asset_group_listing_group_filter.type_.name,
+                "parent": row.asset_group_listing_group_filter.parent_listing_group_filter or None,
+                "resource_name": row.asset_group_listing_group_filter.resource_name,
+            })
+        return success_response({"filters": filters, "count": len(filters)})
+    except Exception as e:
+        logger.error("Failed to list listing group filters: %s", e, exc_info=True)
+        return error_response(f"Failed to list listing group filters: {e}")

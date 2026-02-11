@@ -1,4 +1,4 @@
-"""Audience management tools (6 tools)."""
+"""Audience management tools (12 tools)."""
 
 from __future__ import annotations
 
@@ -228,3 +228,217 @@ def add_audience_to_ad_group(
     except Exception as e:
         logger.error("Failed to add audience to ad group: %s", e, exc_info=True)
         return error_response(f"Failed to add audience to ad group: {e}")
+
+
+@mcp.tool()
+def create_custom_audience(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    name: Annotated[str, "Unique audience name"],
+    audience_type: Annotated[str, "Type: AUTO, SEARCH, INTEREST, PURCHASE_INTENT"],
+    members: Annotated[list[dict], "List of {type: 'KEYWORD'|'URL', value: str}"],
+) -> str:
+    """Create a custom audience with keywords and/or URLs.
+
+    Example members: [{"type": "KEYWORD", "value": "criação de sites"}, {"type": "URL", "value": "https://example.com"}]
+    Types: AUTO (Google decides), SEARCH (search history), INTEREST (interests), PURCHASE_INTENT (buying intent).
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        validate_enum_value(audience_type, "audience_type")
+        client = get_client()
+        service = get_service("CustomAudienceService")
+
+        operation = client.get_type("CustomAudienceOperation")
+        audience = operation.create
+        audience.name = name
+        audience.type_ = getattr(client.enums.CustomAudienceTypeEnum, audience_type)
+
+        for member in members:
+            member_type = member.get("type", "")
+            value = member.get("value", "")
+            validate_enum_value(member_type, "member_type")
+            m = client.get_type("CustomAudienceMember")
+            m.member_type = getattr(client.enums.CustomAudienceMemberTypeEnum, member_type)
+            if member_type == "KEYWORD":
+                m.keyword = value
+            elif member_type == "URL":
+                m.url = value
+            audience.members.append(m)
+
+        response = service.mutate_custom_audiences(customer_id=cid, operations=[operation])
+        rn = response.results[0].resource_name
+        audience_id = rn.split("/")[-1]
+        return success_response(
+            {"audience_id": audience_id, "resource_name": rn},
+            message=f"Custom audience '{name}' created with {len(members)} members",
+        )
+    except Exception as e:
+        logger.error("Failed to create custom audience: %s", e, exc_info=True)
+        return error_response(f"Failed to create custom audience: {e}")
+
+
+@mcp.tool()
+def add_audience_signal(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    asset_group_id: Annotated[str, "The PMax asset group ID"],
+    audience_id: Annotated[str, "The audience ID to use as signal"],
+) -> str:
+    """Add an audience signal to a Performance Max asset group.
+
+    Audience signals help PMax find the right customers. Unlike targeting, signals are hints
+    — PMax may show ads beyond the signaled audience if it predicts conversions.
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        safe_ag = validate_numeric_id(asset_group_id, "asset_group_id")
+        safe_aud = validate_numeric_id(audience_id, "audience_id")
+        client = get_client()
+        service = get_service("AssetGroupSignalService")
+
+        operation = client.get_type("AssetGroupSignalOperation")
+        signal = operation.create
+        signal.asset_group = f"customers/{cid}/assetGroups/{safe_ag}"
+        signal.audience.audience = f"customers/{cid}/audiences/{safe_aud}"
+
+        response = service.mutate_asset_group_signals(customer_id=cid, operations=[operation])
+        return success_response(
+            {"resource_name": response.results[0].resource_name},
+            message=f"Audience signal {audience_id} added to asset group {asset_group_id}",
+        )
+    except Exception as e:
+        logger.error("Failed to add audience signal: %s", e, exc_info=True)
+        return error_response(f"Failed to add audience signal: {e}")
+
+
+@mcp.tool()
+def add_search_theme_signal(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    asset_group_id: Annotated[str, "The PMax asset group ID"],
+    search_themes: Annotated[list[str], "Search themes (keywords/topics, max 25)"],
+) -> str:
+    """Add search theme signals to a Performance Max asset group.
+
+    Search themes tell PMax what topics/keywords are relevant. Each theme is a separate signal.
+    Max 25 search themes per asset group.
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        safe_ag = validate_numeric_id(asset_group_id, "asset_group_id")
+        client = get_client()
+        service = get_service("AssetGroupSignalService")
+
+        if len(search_themes) > 25:
+            return error_response("Maximum 25 search themes per asset group")
+
+        operations = []
+        for theme in search_themes:
+            operation = client.get_type("AssetGroupSignalOperation")
+            signal = operation.create
+            signal.asset_group = f"customers/{cid}/assetGroups/{safe_ag}"
+            signal.search_theme.text = theme
+            operations.append(operation)
+
+        response = service.mutate_asset_group_signals(customer_id=cid, operations=operations)
+        results = [r.resource_name for r in response.results]
+        return success_response(
+            {"resource_names": results, "count": len(results)},
+            message=f"{len(results)} search theme signals added to asset group {asset_group_id}",
+        )
+    except Exception as e:
+        logger.error("Failed to add search theme signals: %s", e, exc_info=True)
+        return error_response(f"Failed to add search theme signals: {e}")
+
+
+@mcp.tool()
+def list_asset_group_signals(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    asset_group_id: Annotated[str, "The PMax asset group ID"],
+    limit: Annotated[int, "Maximum results"] = 100,
+) -> str:
+    """List all audience and search theme signals for a PMax asset group."""
+    try:
+        cid = resolve_customer_id(customer_id)
+        safe_ag = validate_numeric_id(asset_group_id, "asset_group_id")
+        limit = validate_limit(limit)
+        service = get_service("GoogleAdsService")
+
+        query = f"""
+            SELECT
+                asset_group_signal.resource_name,
+                asset_group_signal.asset_group,
+                asset_group_signal.audience.audience,
+                asset_group_signal.search_theme.text,
+                asset_group_signal.approval_status
+            FROM asset_group_signal
+            WHERE asset_group.id = {safe_ag}
+            LIMIT {limit}
+        """
+        response = service.search(customer_id=cid, query=query)
+        signals = []
+        for row in response:
+            signal_data = {
+                "resource_name": row.asset_group_signal.resource_name,
+                "approval_status": row.asset_group_signal.approval_status.name,
+            }
+            if row.asset_group_signal.audience.audience:
+                signal_data["type"] = "audience"
+                signal_data["audience"] = row.asset_group_signal.audience.audience
+            elif row.asset_group_signal.search_theme.text:
+                signal_data["type"] = "search_theme"
+                signal_data["search_theme"] = row.asset_group_signal.search_theme.text
+            signals.append(signal_data)
+        return success_response({"signals": signals, "count": len(signals)})
+    except Exception as e:
+        logger.error("Failed to list asset group signals: %s", e, exc_info=True)
+        return error_response(f"Failed to list asset group signals: {e}")
+
+
+@mcp.tool()
+def remove_asset_group_signal(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    signal_resource_name: Annotated[str, "The full resource name of the signal to remove (from list_asset_group_signals)"],
+) -> str:
+    """Remove an audience or search theme signal from a PMax asset group."""
+    try:
+        cid = resolve_customer_id(customer_id)
+        client = get_client()
+        service = get_service("AssetGroupSignalService")
+
+        operation = client.get_type("AssetGroupSignalOperation")
+        operation.remove = signal_resource_name
+
+        response = service.mutate_asset_group_signals(customer_id=cid, operations=[operation])
+        return success_response(
+            {"resource_name": response.results[0].resource_name},
+            message=f"Signal removed: {signal_resource_name}",
+        )
+    except Exception as e:
+        logger.error("Failed to remove asset group signal: %s", e, exc_info=True)
+        return error_response(f"Failed to remove asset group signal: {e}")
+
+
+@mcp.tool()
+def remove_audience_from_ad_group(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    ad_group_id: Annotated[str, "The ad group ID"],
+    criterion_id: Annotated[str, "The ad group criterion ID to remove"],
+) -> str:
+    """Remove an audience targeting criterion from an ad group."""
+    try:
+        cid = resolve_customer_id(customer_id)
+        safe_ag = validate_numeric_id(ad_group_id, "ad_group_id")
+        safe_crit = validate_numeric_id(criterion_id, "criterion_id")
+        client = get_client()
+        service = get_service("AdGroupCriterionService")
+
+        operation = client.get_type("AdGroupCriterionOperation")
+        operation.remove = f"customers/{cid}/adGroupCriteria/{safe_ag}~{safe_crit}"
+
+        response = service.mutate_ad_group_criteria(customer_id=cid, operations=[operation])
+        return success_response(
+            {"resource_name": response.results[0].resource_name},
+            message=f"Audience criterion {criterion_id} removed from ad group {ad_group_id}",
+        )
+    except Exception as e:
+        logger.error("Failed to remove audience from ad group: %s", e, exc_info=True)
+        return error_response(f"Failed to remove audience from ad group: {e}")

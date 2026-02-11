@@ -1,4 +1,4 @@
-"""Reporting tools (14 tools)."""
+"""Reporting tools (15 tools)."""
 
 from __future__ import annotations
 
@@ -967,3 +967,51 @@ def comparison_report(
     except Exception as e:
         logger.error("Failed to generate comparison report: %s", e, exc_info=True)
         return error_response(f"Failed to generate comparison report: {e}")
+
+
+@mcp.tool()
+def pmax_search_term_insights(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    campaign_id: Annotated[str | None, "Filter by PMax campaign ID"] = None,
+    limit: Annotated[int, "Maximum results"] = 1000,
+) -> str:
+    """Get search term insights for Performance Max campaigns.
+
+    Shows categories of search terms that triggered PMax ads. Unlike search_terms_report,
+    this works specifically with PMax campaigns using campaign_search_term_insight resource.
+    Note: Returns category-level insights, not individual search terms.
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
+        service = get_service("GoogleAdsService")
+
+        conditions = []
+        if campaign_id:
+            conditions.append(
+                f"campaign_search_term_insight.campaign_id = {validate_numeric_id(campaign_id, 'campaign_id')}"
+            )
+
+        where = "WHERE " + " AND ".join(conditions) if conditions else ""
+
+        query = f"""
+            SELECT
+                campaign_search_term_insight.category_label,
+                campaign_search_term_insight.id,
+                campaign_search_term_insight.campaign_id
+            FROM campaign_search_term_insight
+            {where}
+            LIMIT {limit}
+        """
+        response = service.search(customer_id=cid, query=query)
+        insights = []
+        for row in response:
+            insights.append({
+                "category_label": row.campaign_search_term_insight.category_label,
+                "insight_id": str(row.campaign_search_term_insight.id),
+                "campaign_id": str(row.campaign_search_term_insight.campaign_id),
+            })
+        return success_response({"insights": insights, "count": len(insights)})
+    except Exception as e:
+        logger.error("Failed to get PMax search term insights: %s", e, exc_info=True)
+        return error_response(f"Failed to get PMax search term insights: {e}")

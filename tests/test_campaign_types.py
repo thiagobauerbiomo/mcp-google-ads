@@ -610,3 +610,272 @@ class TestCreateAppCampaign:
             app_store="DROP TABLE;",
         ))
         assert "Failed" in result["error"]
+
+
+# ---------------------------------------------------------------------------
+# TestCreateAssetGroup
+# ---------------------------------------------------------------------------
+
+class TestCreateAssetGroup:
+    @patch("mcp_google_ads.tools.campaign_types.get_service")
+    @patch("mcp_google_ads.tools.campaign_types.get_client")
+    @patch("mcp_google_ads.tools.campaign_types.resolve_customer_id", return_value="123")
+    def test_success(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.campaign_types import create_asset_group
+
+        client = MagicMock()
+        mock_client.return_value = client
+        mock_response = MagicMock()
+        mock_response.mutate_operation_responses = [
+            MagicMock(asset_group_result=MagicMock(resource_name="customers/123/assetGroups/999")),
+            MagicMock(),
+        ]
+        mock_service = MagicMock()
+        mock_service.mutate.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(create_asset_group("123", "456", "New AG", ["https://example.com"]))
+        assert result["data"]["asset_group_id"] == "999"
+        assert "PAUSED" in result["message"]
+
+    @patch("mcp_google_ads.tools.campaign_types.get_service")
+    @patch("mcp_google_ads.tools.campaign_types.get_client")
+    @patch("mcp_google_ads.tools.campaign_types.resolve_customer_id", return_value="123")
+    def test_with_paths(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.campaign_types import create_asset_group
+
+        client = MagicMock()
+        mock_client.return_value = client
+        mock_response = MagicMock()
+        mock_response.mutate_operation_responses = [
+            MagicMock(asset_group_result=MagicMock(resource_name="customers/123/assetGroups/999")),
+            MagicMock(),
+        ]
+        mock_service = MagicMock()
+        mock_service.mutate.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(create_asset_group("123", "456", "New AG", ["https://example.com"], path1="sites", path2="pro"))
+        assert result["data"]["asset_group_id"] == "999"
+
+    @patch("mcp_google_ads.tools.campaign_types.resolve_customer_id", side_effect=Exception("API error"))
+    def test_error(self, mock_resolve):
+        from mcp_google_ads.tools.campaign_types import create_asset_group
+
+        result = assert_error(create_asset_group("123", "456", "AG", ["https://example.com"]))
+        assert "Failed to create asset group" in result["error"]
+
+
+# ---------------------------------------------------------------------------
+# TestAddAssetToAssetGroup
+# ---------------------------------------------------------------------------
+
+class TestAddAssetToAssetGroup:
+    @patch("mcp_google_ads.tools.campaign_types.get_service")
+    @patch("mcp_google_ads.tools.campaign_types.get_client")
+    @patch("mcp_google_ads.tools.campaign_types.resolve_customer_id", return_value="123")
+    def test_success(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.campaign_types import add_asset_to_asset_group
+
+        client = MagicMock()
+        mock_client.return_value = client
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(resource_name="customers/123/assetGroupAssets/456~789~HEADLINE")]
+        mock_service = MagicMock()
+        mock_service.mutate_asset_group_assets.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(add_asset_to_asset_group("123", "456", "789", "HEADLINE"))
+        assert "resource_name" in result["data"]
+        assert "linked" in result["message"]
+
+    def test_invalid_field_type(self):
+        from mcp_google_ads.tools.campaign_types import add_asset_to_asset_group
+
+        result = assert_error(add_asset_to_asset_group("123", "456", "789", "DROP TABLE"))
+        assert "Failed to add asset to asset group" in result["error"]
+
+    @patch("mcp_google_ads.tools.campaign_types.get_service")
+    @patch("mcp_google_ads.tools.campaign_types.get_client")
+    @patch("mcp_google_ads.tools.campaign_types.resolve_customer_id", return_value="123")
+    def test_error(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.campaign_types import add_asset_to_asset_group
+
+        client = MagicMock()
+        mock_client.return_value = client
+        mock_service = MagicMock()
+        mock_service.mutate_asset_group_assets.side_effect = Exception("API error")
+        mock_get_service.return_value = mock_service
+
+        result = assert_error(add_asset_to_asset_group("123", "456", "789", "HEADLINE"))
+        assert "Failed to add asset to asset group" in result["error"]
+
+
+# ---------------------------------------------------------------------------
+# TestRemoveAssetFromAssetGroup
+# ---------------------------------------------------------------------------
+
+class TestRemoveAssetFromAssetGroup:
+    @patch("mcp_google_ads.tools.campaign_types.get_service")
+    @patch("mcp_google_ads.tools.campaign_types.get_client")
+    @patch("mcp_google_ads.tools.campaign_types.resolve_customer_id", return_value="123")
+    def test_success(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.campaign_types import remove_asset_from_asset_group
+
+        client = MagicMock()
+        mock_client.return_value = client
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(resource_name="customers/123/assetGroupAssets/456~789~HEADLINE")]
+        mock_service = MagicMock()
+        mock_service.mutate_asset_group_assets.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(remove_asset_from_asset_group("123", "456", "789", "HEADLINE"))
+        assert "resource_name" in result["data"]
+
+    def test_invalid_id(self):
+        from mcp_google_ads.tools.campaign_types import remove_asset_from_asset_group
+
+        result = assert_error(remove_asset_from_asset_group("123", "abc", "789", "HEADLINE"))
+        assert "Failed to remove asset from asset group" in result["error"]
+
+
+# ---------------------------------------------------------------------------
+# TestListAssetGroupAssets
+# ---------------------------------------------------------------------------
+
+class TestListAssetGroupAssets:
+    @patch("mcp_google_ads.tools.campaign_types.get_service")
+    @patch("mcp_google_ads.tools.campaign_types.resolve_customer_id", return_value="123")
+    def test_success(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.campaign_types import list_asset_group_assets
+
+        mock_row = MagicMock()
+        mock_row.asset.id = 789
+        mock_row.asset.name = "Test Headline"
+        mock_row.asset_group_asset.field_type.name = "HEADLINE"
+        mock_row.asset_group_asset.status.name = "ENABLED"
+        mock_row.asset.type_.name = "TEXT"
+        mock_row.asset.text_asset.text = "Buy Now"
+        mock_row.asset.image_asset.full_size.url = ""
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = [mock_row]
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(list_asset_group_assets("123", "456"))
+        assert result["data"]["count"] == 1
+        assert result["data"]["assets"][0]["text"] == "Buy Now"
+        assert result["data"]["assets"][0]["field_type"] == "HEADLINE"
+
+    @patch("mcp_google_ads.tools.campaign_types.get_service")
+    @patch("mcp_google_ads.tools.campaign_types.resolve_customer_id", return_value="123")
+    def test_empty(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.campaign_types import list_asset_group_assets
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = []
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(list_asset_group_assets("123", "456"))
+        assert result["data"]["count"] == 0
+
+    def test_invalid_id(self):
+        from mcp_google_ads.tools.campaign_types import list_asset_group_assets
+
+        result = assert_error(list_asset_group_assets("123", "abc"))
+        assert "Failed to list asset group assets" in result["error"]
+
+
+# ---------------------------------------------------------------------------
+# TestCreateListingGroupFilter
+# ---------------------------------------------------------------------------
+
+class TestCreateListingGroupFilter:
+    @patch("mcp_google_ads.tools.campaign_types.get_service")
+    @patch("mcp_google_ads.tools.campaign_types.get_client")
+    @patch("mcp_google_ads.tools.campaign_types.resolve_customer_id", return_value="123")
+    def test_unit_included(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.campaign_types import create_listing_group_filter
+
+        client = MagicMock()
+        mock_client.return_value = client
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(resource_name="customers/123/assetGroupListingGroupFilters/456~1")]
+        mock_service = MagicMock()
+        mock_service.mutate_asset_group_listing_group_filters.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(create_listing_group_filter("123", "456", "UNIT_INCLUDED"))
+        assert "resource_name" in result["data"]
+
+    @patch("mcp_google_ads.tools.campaign_types.get_service")
+    @patch("mcp_google_ads.tools.campaign_types.get_client")
+    @patch("mcp_google_ads.tools.campaign_types.resolve_customer_id", return_value="123")
+    def test_with_dimension(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.campaign_types import create_listing_group_filter
+
+        client = MagicMock()
+        mock_client.return_value = client
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(resource_name="customers/123/assetGroupListingGroupFilters/456~2")]
+        mock_service = MagicMock()
+        mock_service.mutate_asset_group_listing_group_filters.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(create_listing_group_filter(
+            "123", "456", "UNIT_INCLUDED",
+            parent_filter_id="1",
+            dimension_type="product_brand",
+            dimension_value="Nike"
+        ))
+        assert "resource_name" in result["data"]
+
+    def test_invalid_filter_type(self):
+        from mcp_google_ads.tools.campaign_types import create_listing_group_filter
+
+        result = assert_error(create_listing_group_filter("123", "456", "DROP TABLE"))
+        assert "Failed to create listing group filter" in result["error"]
+
+
+# ---------------------------------------------------------------------------
+# TestListListingGroupFilters
+# ---------------------------------------------------------------------------
+
+class TestListListingGroupFilters:
+    @patch("mcp_google_ads.tools.campaign_types.get_service")
+    @patch("mcp_google_ads.tools.campaign_types.resolve_customer_id", return_value="123")
+    def test_success(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.campaign_types import list_listing_group_filters
+
+        mock_row = MagicMock()
+        mock_row.asset_group_listing_group_filter.id = 1
+        mock_row.asset_group_listing_group_filter.type_.name = "UNIT_INCLUDED"
+        mock_row.asset_group_listing_group_filter.parent_listing_group_filter = ""
+        mock_row.asset_group_listing_group_filter.resource_name = "customers/123/assetGroupListingGroupFilters/456~1"
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = [mock_row]
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(list_listing_group_filters("123", "456"))
+        assert result["data"]["count"] == 1
+        assert result["data"]["filters"][0]["type"] == "UNIT_INCLUDED"
+
+    @patch("mcp_google_ads.tools.campaign_types.get_service")
+    @patch("mcp_google_ads.tools.campaign_types.resolve_customer_id", return_value="123")
+    def test_empty(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.campaign_types import list_listing_group_filters
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = []
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(list_listing_group_filters("123", "456"))
+        assert result["data"]["count"] == 0
+
+    def test_invalid_id(self):
+        from mcp_google_ads.tools.campaign_types import list_listing_group_filters
+
+        result = assert_error(list_listing_group_filters("123", "abc"))
+        assert "Failed to list listing group filters" in result["error"]
