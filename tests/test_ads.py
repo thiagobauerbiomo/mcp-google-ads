@@ -451,6 +451,139 @@ class TestCreateResponsiveSearchAd:
         assert result["data"]["status"] == "PAUSED"
 
 
+    @patch("mcp_google_ads.tools.ads.get_service")
+    @patch("mcp_google_ads.tools.ads.get_client")
+    @patch("mcp_google_ads.tools.ads.resolve_customer_id", return_value="123")
+    def test_create_with_pinned_headlines(self, mock_resolve, mock_get_client, mock_get_service):
+        from mcp_google_ads.tools.ads import create_responsive_search_ad
+
+        mock_client = MagicMock()
+        mock_client.enums.AdGroupAdStatusEnum.PAUSED = 2
+        mock_client.enums.ServedAssetFieldTypeEnum.HEADLINE_1 = 2
+        mock_client.enums.ServedAssetFieldTypeEnum.HEADLINE_2 = 3
+        operation = MagicMock()
+        mock_client.get_type.return_value = operation
+        mock_get_client.return_value = mock_client
+
+        mock_service = MagicMock()
+        mock_service.mutate_ad_group_ads.return_value = _mock_mutate_response()
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(create_responsive_search_ad(
+            "123", "222",
+            headlines=["H1", "H2", "H3"],
+            descriptions=["D1", "D2"],
+            final_url="https://example.com",
+            pinned_headlines={0: "HEADLINE_1", 2: "HEADLINE_2"},
+        ))
+        assert result["data"]["pins"] == 2
+        assert "2 pins" in result["message"]
+
+    @patch("mcp_google_ads.tools.ads.get_service")
+    @patch("mcp_google_ads.tools.ads.get_client")
+    @patch("mcp_google_ads.tools.ads.resolve_customer_id", return_value="123")
+    def test_create_with_pinned_descriptions(self, mock_resolve, mock_get_client, mock_get_service):
+        from mcp_google_ads.tools.ads import create_responsive_search_ad
+
+        mock_client = MagicMock()
+        mock_client.enums.AdGroupAdStatusEnum.PAUSED = 2
+        mock_client.enums.ServedAssetFieldTypeEnum.DESCRIPTION_1 = 5
+        operation = MagicMock()
+        mock_client.get_type.return_value = operation
+        mock_get_client.return_value = mock_client
+
+        mock_service = MagicMock()
+        mock_service.mutate_ad_group_ads.return_value = _mock_mutate_response()
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(create_responsive_search_ad(
+            "123", "222",
+            headlines=["H1", "H2", "H3"],
+            descriptions=["D1", "D2"],
+            final_url="https://example.com",
+            pinned_descriptions={0: "DESCRIPTION_1"},
+        ))
+        assert result["data"]["pins"] == 1
+
+    @patch("mcp_google_ads.tools.ads.get_service")
+    @patch("mcp_google_ads.tools.ads.get_client")
+    @patch("mcp_google_ads.tools.ads.resolve_customer_id", return_value="123")
+    def test_create_with_all_pins(self, mock_resolve, mock_get_client, mock_get_service):
+        from mcp_google_ads.tools.ads import create_responsive_search_ad
+
+        mock_client = MagicMock()
+        mock_client.enums.AdGroupAdStatusEnum.PAUSED = 2
+        mock_client.enums.ServedAssetFieldTypeEnum.HEADLINE_1 = 2
+        mock_client.enums.ServedAssetFieldTypeEnum.HEADLINE_3 = 4
+        mock_client.enums.ServedAssetFieldTypeEnum.DESCRIPTION_1 = 5
+        operation = MagicMock()
+        mock_client.get_type.return_value = operation
+        mock_get_client.return_value = mock_client
+
+        mock_service = MagicMock()
+        mock_service.mutate_ad_group_ads.return_value = _mock_mutate_response()
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(create_responsive_search_ad(
+            "123", "222",
+            headlines=["H1", "H2", "H3"],
+            descriptions=["D1", "D2"],
+            final_url="https://example.com",
+            pinned_headlines={0: "HEADLINE_1", 2: "HEADLINE_3"},
+            pinned_descriptions={0: "DESCRIPTION_1"},
+        ))
+        assert result["data"]["pins"] == 3
+
+    def test_create_with_invalid_headline_pin(self):
+        from mcp_google_ads.tools.ads import create_responsive_search_ad
+
+        result = assert_error(create_responsive_search_ad(
+            "123", "222",
+            headlines=["H1", "H2", "H3"],
+            descriptions=["D1", "D2"],
+            final_url="https://example.com",
+            pinned_headlines={0: "DESCRIPTION_1"},
+        ))
+        assert "Invalid pin position" in result["error"]
+
+    def test_create_with_invalid_description_pin(self):
+        from mcp_google_ads.tools.ads import create_responsive_search_ad
+
+        result = assert_error(create_responsive_search_ad(
+            "123", "222",
+            headlines=["H1", "H2", "H3"],
+            descriptions=["D1", "D2"],
+            final_url="https://example.com",
+            pinned_descriptions={0: "HEADLINE_1"},
+        ))
+        assert "Invalid pin position" in result["error"]
+
+    @patch("mcp_google_ads.tools.ads.get_service")
+    @patch("mcp_google_ads.tools.ads.get_client")
+    @patch("mcp_google_ads.tools.ads.resolve_customer_id", return_value="123")
+    def test_create_without_pins_zero_count(self, mock_resolve, mock_get_client, mock_get_service):
+        from mcp_google_ads.tools.ads import create_responsive_search_ad
+
+        mock_client = MagicMock()
+        mock_client.enums.AdGroupAdStatusEnum.PAUSED = 2
+        operation = MagicMock()
+        mock_client.get_type.return_value = operation
+        mock_get_client.return_value = mock_client
+
+        mock_service = MagicMock()
+        mock_service.mutate_ad_group_ads.return_value = _mock_mutate_response()
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(create_responsive_search_ad(
+            "123", "222",
+            headlines=["H1", "H2", "H3"],
+            descriptions=["D1", "D2"],
+            final_url="https://example.com",
+        ))
+        assert result["data"]["pins"] == 0
+        assert "pins" not in result["message"]
+
+
 class TestUpdateAd:
     @patch("mcp_google_ads.tools.ads.get_service")
     @patch("mcp_google_ads.tools.ads.get_client")

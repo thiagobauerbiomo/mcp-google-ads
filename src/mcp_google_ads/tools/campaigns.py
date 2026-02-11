@@ -138,6 +138,7 @@ def create_campaign(
     bidding_strategy: Annotated[str, "Bidding strategy: MANUAL_CPC, MAXIMIZE_CLICKS, MAXIMIZE_CONVERSIONS, TARGET_CPA, TARGET_ROAS"] = "MANUAL_CPC",
     target_cpa_micros: Annotated[int | None, "Target CPA in micros (for TARGET_CPA strategy)"] = None,
     target_roas: Annotated[float | None, "Target ROAS (for TARGET_ROAS strategy, e.g., 3.0 for 300%)"] = None,
+    cpc_bid_ceiling_micros: Annotated[int | None, "Max CPC ceiling in micros for MAXIMIZE_CLICKS (e.g., 4000000 for R$4.00)"] = None,
     network_search: Annotated[bool, "Target Google Search"] = True,
     network_search_partners: Annotated[bool, "Target Search Partners"] = False,
     network_display: Annotated[bool, "Target Display Network"] = False,
@@ -158,6 +159,7 @@ def create_campaign(
         budget.name = f"Budget for {name}"
         budget.amount_micros = to_micros(budget_amount)
         budget.delivery_method = client.enums.BudgetDeliveryMethodEnum.STANDARD
+        budget.explicitly_shared = False
 
         budget_response = budget_service.mutate_campaign_budgets(
             customer_id=cid, operations=[budget_op]
@@ -175,14 +177,29 @@ def create_campaign(
             client.enums.AdvertisingChannelTypeEnum, channel_type
         )
 
+        # EU political advertising (required field — DOES_NOT_CONTAIN = 3)
+        campaign.contains_eu_political_advertising = 3
+
         # Bidding strategy
         validate_enum_value(bidding_strategy, "bidding_strategy")
         if bidding_strategy == "MANUAL_CPC":
             campaign.manual_cpc.enhanced_cpc_enabled = False
-        elif bidding_strategy == "MAXIMIZE_CLICKS":
-            campaign.maximize_clicks.cpc_bid_ceiling_micros = 0
+        elif bidding_strategy in ("MAXIMIZE_CLICKS", "TARGET_SPEND"):
+            if cpc_bid_ceiling_micros:
+                campaign.target_spend.cpc_bid_ceiling_micros = cpc_bid_ceiling_micros
+            else:
+                client.copy_from(
+                    campaign.target_spend,
+                    client.get_type("TargetSpend")(),
+                )
         elif bidding_strategy == "MAXIMIZE_CONVERSIONS":
-            campaign.maximize_conversions.target_cpa_micros = target_cpa_micros or 0
+            if target_cpa_micros:
+                campaign.maximize_conversions.target_cpa_micros = target_cpa_micros
+            else:
+                client.copy_from(
+                    campaign.maximize_conversions,
+                    client.get_type("MaximizeConversions")(),
+                )
         elif bidding_strategy == "TARGET_CPA":
             campaign.target_cpa.target_cpa_micros = target_cpa_micros or 0
         elif bidding_strategy == "TARGET_ROAS":

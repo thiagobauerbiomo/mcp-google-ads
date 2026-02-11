@@ -450,8 +450,8 @@ class TestSearchTermsReport:
         mock_row = MagicMock()
         mock_row.search_term_view.search_term = "comprar tenis nike"
         mock_row.search_term_view.status.name = "ADDED"
-        mock_row.ad_group_criterion.keyword.text = "tenis nike"
-        mock_row.ad_group_criterion.keyword.match_type.name = "BROAD"
+        mock_row.ad_group.id = 222
+        mock_row.ad_group.name = "Ad Group Tenis"
         mock_row.campaign.id = 111
         mock_row.campaign.name = "Campaign Search"
         mock_row.metrics.impressions = 500
@@ -468,8 +468,8 @@ class TestSearchTermsReport:
         assert result["data"]["count"] == 1
         row = result["data"]["report"][0]
         assert row["search_term"] == "comprar tenis nike"
-        assert row["matched_keyword"] == "tenis nike"
-        assert row["match_type"] == "BROAD"
+        assert row["ad_group_id"] == "222"
+        assert row["ad_group_name"] == "Ad Group Tenis"
         assert row["campaign_name"] == "Campaign Search"
         assert row["cost"] == 15.0
         assert row["ctr"] == 6.0
@@ -501,8 +501,8 @@ class TestSearchTermsReport:
         row1 = MagicMock()
         row1.search_term_view.search_term = "termo 1"
         row1.search_term_view.status.name = "ADDED"
-        row1.ad_group_criterion.keyword.text = "kw1"
-        row1.ad_group_criterion.keyword.match_type.name = "EXACT"
+        row1.ad_group.id = 222
+        row1.ad_group.name = "AG1"
         row1.campaign.id = 111
         row1.campaign.name = "C1"
         row1.metrics.impressions = 100
@@ -514,8 +514,8 @@ class TestSearchTermsReport:
         row2 = MagicMock()
         row2.search_term_view.search_term = "termo 2"
         row2.search_term_view.status.name = "NONE"
-        row2.ad_group_criterion.keyword.text = "kw2"
-        row2.ad_group_criterion.keyword.match_type.name = "PHRASE"
+        row2.ad_group.id = 333
+        row2.ad_group.name = "AG2"
         row2.campaign.id = 111
         row2.campaign.name = "C1"
         row2.metrics.impressions = 200

@@ -109,12 +109,9 @@ def create_sitelink_assets(
                 asset.sitelink_asset.description2 = sl["description2"]
             operations.append(operation)
 
-        response = service.mutate_assets(customer_id=cid, operations=operations, partial_failure=True)
-        partial_errors = process_partial_failure(response)
+        response = service.mutate_assets(customer_id=cid, operations=operations)
         results = [r.resource_name for r in response.results]
         result_data = {"created": len(results), "resource_names": results}
-        if partial_errors:
-            result_data["partial_errors"] = partial_errors
         return success_response(
             result_data,
             message=f"{len(results)} sitelink assets created",
@@ -150,12 +147,9 @@ def create_callout_assets(
             asset.callout_asset.callout_text = text
             operations.append(operation)
 
-        response = service.mutate_assets(customer_id=cid, operations=operations, partial_failure=True)
-        partial_errors = process_partial_failure(response)
+        response = service.mutate_assets(customer_id=cid, operations=operations)
         results = [r.resource_name for r in response.results]
         result_data = {"created": len(results), "resource_names": results}
-        if partial_errors:
-            result_data["partial_errors"] = partial_errors
         return success_response(
             result_data,
             message=f"{len(results)} callout assets created",

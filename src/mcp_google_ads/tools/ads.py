@@ -145,6 +145,15 @@ def get_ad(
         return error_response(f"Failed to get ad: {e}")
 
 
+_PIN_FIELD_MAP = {
+    "HEADLINE_1": "HEADLINE_1",
+    "HEADLINE_2": "HEADLINE_2",
+    "HEADLINE_3": "HEADLINE_3",
+    "DESCRIPTION_1": "DESCRIPTION_1",
+    "DESCRIPTION_2": "DESCRIPTION_2",
+}
+
+
 @mcp.tool()
 def create_responsive_search_ad(
     customer_id: Annotated[str, "The Google Ads customer ID"],
@@ -154,16 +163,35 @@ def create_responsive_search_ad(
     final_url: Annotated[str, "Landing page URL"],
     path1: Annotated[str | None, "Display URL path 1 (max 15 chars)"] = None,
     path2: Annotated[str | None, "Display URL path 2 (max 15 chars)"] = None,
+    pinned_headlines: Annotated[
+        dict[int, str] | None,
+        "Pin headlines to positions. Key=0-based index, value=HEADLINE_1/HEADLINE_2/HEADLINE_3. Example: {0: 'HEADLINE_1', 2: 'HEADLINE_2'}",
+    ] = None,
+    pinned_descriptions: Annotated[
+        dict[int, str] | None,
+        "Pin descriptions to positions. Key=0-based index, value=DESCRIPTION_1/DESCRIPTION_2. Example: {0: 'DESCRIPTION_1'}",
+    ] = None,
 ) -> str:
     """Create a Responsive Search Ad (RSA). Created PAUSED by default.
 
     Requires 3-15 headlines and 2-4 descriptions. More assets = better optimization.
+    Use pinned_headlines/pinned_descriptions to pin specific assets to positions.
     """
     try:
         if len(headlines) < 3 or len(headlines) > 15:
             return error_response("Headlines must be between 3 and 15")
         if len(descriptions) < 2 or len(descriptions) > 4:
             return error_response("Descriptions must be between 2 and 4")
+
+        # Validar pins antes de chamar a API
+        if pinned_headlines:
+            for idx, pin_value in pinned_headlines.items():
+                if pin_value not in ("HEADLINE_1", "HEADLINE_2", "HEADLINE_3"):
+                    return error_response(f"Invalid pin position '{pin_value}' for headline {idx}. Use HEADLINE_1, HEADLINE_2, or HEADLINE_3")
+        if pinned_descriptions:
+            for idx, pin_value in pinned_descriptions.items():
+                if pin_value not in ("DESCRIPTION_1", "DESCRIPTION_2"):
+                    return error_response(f"Invalid pin position '{pin_value}' for description {idx}. Use DESCRIPTION_1 or DESCRIPTION_2")
 
         cid = resolve_customer_id(customer_id)
         client = get_client()
@@ -177,14 +205,18 @@ def create_responsive_search_ad(
         ad = ad_group_ad.ad
         ad.final_urls.append(final_url)
 
-        for headline_text in headlines:
+        for i, headline_text in enumerate(headlines):
             headline = client.get_type("AdTextAsset")
             headline.text = headline_text
+            if pinned_headlines and i in pinned_headlines:
+                headline.pinned_field = getattr(client.enums.ServedAssetFieldTypeEnum, pinned_headlines[i])
             ad.responsive_search_ad.headlines.append(headline)
 
-        for desc_text in descriptions:
+        for i, desc_text in enumerate(descriptions):
             description = client.get_type("AdTextAsset")
             description.text = desc_text
+            if pinned_descriptions and i in pinned_descriptions:
+                description.pinned_field = getattr(client.enums.ServedAssetFieldTypeEnum, pinned_descriptions[i])
             ad.responsive_search_ad.descriptions.append(description)
 
         if path1:
@@ -195,9 +227,11 @@ def create_responsive_search_ad(
         response = service.mutate_ad_group_ads(customer_id=cid, operations=[operation])
         resource_name = response.results[0].resource_name
 
+        pin_count = len(pinned_headlines or {}) + len(pinned_descriptions or {})
+        pin_msg = f" with {pin_count} pins" if pin_count else ""
         return success_response(
-            {"resource_name": resource_name, "status": "PAUSED"},
-            message="RSA created as PAUSED",
+            {"resource_name": resource_name, "status": "PAUSED", "pins": pin_count},
+            message=f"RSA created as PAUSED{pin_msg}",
         )
     except Exception as e:
         logger.error("Failed to create RSA: %s", e, exc_info=True)

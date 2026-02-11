@@ -21,7 +21,7 @@ src/mcp_google_ads/
     ├── ad_groups.py          #  6: list, get, create, update, set_status, remove
     ├── ads.py                #  6: list, get, create_rsa, update, set_status, get_strength
     ├── keywords.py           #  9: list, add, update, remove, neg_campaign, neg_shared, generate_ideas, forecast, list_negative
-    ├── budgets.py            #  4: list, get, create, update
+    ├── budgets.py            #  5: list, get, create, update, remove
     ├── bidding.py            #  5: list, get, create, update, set_campaign_strategy
     ├── reporting.py          # 14: campaign/adgroup/ad/keyword perf, search_terms, audience, geo, change_history, device, hourly, age_gender, placement, quality_score, comparison
     ├── dashboard.py          #  2: mcc_performance_summary, account_dashboard
@@ -30,7 +30,7 @@ src/mcp_google_ads/
     ├── labels.py             #  8: list, create, remove, apply_to_campaign/ad_group/ad/keyword, remove_from_resource
     ├── shared_sets.py        #  6: list, create, remove, list_members, link_to_campaign, unlink_from_campaign
     ├── conversions.py        #  6: list_actions, get_action, create_action, update_action, import_offline, list_goals
-    ├── targeting.py          #  7: device_bid, create/list/remove_ad_schedule, exclude_geo, add/remove_language
+    ├── targeting.py          #  8: device_bid, create/list/remove_ad_schedule, exclude_geo, add_geo, add/remove_language
     ├── recommendations.py    #  5: list, get, apply, dismiss, get_optimization_score
     ├── experiments.py        #  5: list, create, get, promote, end
     └── search.py             #  1: execute_gaql (GAQL raw)
@@ -117,7 +117,7 @@ tests/
 ├── test_campaigns.py        # 36 testes (todas as 7 tools, status, labels, error paths)
 ├── test_campaign_types.py   # 34 testes (todas as 8 tools, PMax, Display, Video, Shopping, DemandGen, App)
 ├── test_ad_groups.py        # 36 testes (todas as 6 tools, validação, error paths)
-├── test_ads.py              # 44 testes (todas as 6 tools, RSA, status, strength)
+├── test_ads.py              # 51 testes (todas as 6 tools, RSA com pins, status, strength)
 ├── test_keywords.py         # 36 testes (todas as 9 tools, batch, dedup, forecast)
 ├── test_reporting.py        # 55 testes (_run_report, _build_where, 14 reports)
 ├── test_labels.py           # 18 testes (todas as 8 tools, apply/remove)
@@ -133,7 +133,7 @@ tests/
 ├── test_experiments.py      # 14 testes (todas as 5 tools, arms, schedule)
 ├── test_account_management.py # 7 testes
 ├── test_accounts.py         # 14 testes (todas as 4 tools)
-└── test_budgets.py          # 32 testes (todas as 4 tools + micros + delivery_method)
+└── test_budgets.py          # 38 testes (todas as 5 tools + micros + delivery_method + remove)
 ```
 
 Modulos com 100% cobertura (18): auth, config, coordinator, exceptions, __init__, tools/__init__, accounts, account_management, ad_groups, ads, audiences, budgets, campaign_types, experiments, recommendations, search, shared_sets, targeting

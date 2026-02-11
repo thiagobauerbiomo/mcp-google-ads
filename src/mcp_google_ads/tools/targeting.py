@@ -188,6 +188,40 @@ def exclude_geo_location(
 
 
 @mcp.tool()
+def add_geo_location(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    campaign_id: Annotated[str, "The campaign ID"],
+    geo_target_ids: Annotated[list[str], "List of geo target criterion IDs to add (use suggest_geo_targets to find IDs)"],
+) -> str:
+    """Add geographic location targeting to a campaign (positive — include locations).
+
+    Use suggest_geo_targets to find geo_target_id for specific locations.
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        client = get_client()
+        service = get_service("CampaignCriterionService")
+
+        operations = []
+        for geo_id in geo_target_ids:
+            operation = client.get_type("CampaignCriterionOperation")
+            criterion = operation.create
+            criterion.campaign = f"customers/{cid}/campaigns/{campaign_id}"
+            criterion.location.geo_target_constant = f"geoTargetConstants/{geo_id}"
+            operations.append(operation)
+
+        response = service.mutate_campaign_criteria(customer_id=cid, operations=operations)
+        results = [r.resource_name for r in response.results]
+        return success_response(
+            {"resource_names": results, "count": len(results)},
+            message=f"{len(results)} geo locations added to campaign {campaign_id}",
+        )
+    except Exception as e:
+        logger.error("Failed to add geo location: %s", e, exc_info=True)
+        return error_response(f"Failed to add geo location: {e}")
+
+
+@mcp.tool()
 def add_language_targeting(
     customer_id: Annotated[str, "The Google Ads customer ID"],
     campaign_id: Annotated[str, "The campaign ID"],

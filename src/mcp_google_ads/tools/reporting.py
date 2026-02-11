@@ -353,8 +353,8 @@ def search_terms_report(
                 SELECT
                     search_term_view.search_term,
                     search_term_view.status,
-                    ad_group_criterion.keyword.text,
-                    ad_group_criterion.keyword.match_type,
+                    ad_group.id,
+                    ad_group.name,
                     campaign.id,
                     campaign.name,
                     metrics.impressions,
@@ -370,8 +370,8 @@ def search_terms_report(
             field_extractor=lambda row: {
                 "search_term": row.search_term_view.search_term,
                 "status": row.search_term_view.status.name,
-                "matched_keyword": row.ad_group_criterion.keyword.text,
-                "match_type": row.ad_group_criterion.keyword.match_type.name,
+                "ad_group_id": str(row.ad_group.id),
+                "ad_group_name": row.ad_group.name,
                 "campaign_id": str(row.campaign.id),
                 "campaign_name": row.campaign.name,
                 "impressions": row.metrics.impressions,

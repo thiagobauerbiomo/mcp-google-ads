@@ -524,3 +524,118 @@ class TestUpdateBudget:
 
         # copy_from deve ter sido chamado com o field mask
         assert client.copy_from.called
+
+
+class TestRemoveBudget:
+    @patch("mcp_google_ads.tools.budgets.get_service")
+    @patch("mcp_google_ads.tools.budgets.get_client")
+    @patch("mcp_google_ads.tools.budgets.resolve_customer_id", return_value="123")
+    def test_removes_orphan_budget(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.budgets import remove_budget
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        # Mock search para reference_count = 0
+        mock_search_row = MagicMock()
+        mock_search_row.campaign_budget.id = 555
+        mock_search_row.campaign_budget.reference_count = 0
+        mock_search_service = MagicMock()
+        mock_search_service.search.return_value = [mock_search_row]
+
+        # Mock budget service para remove
+        mock_budget_service = MagicMock()
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(resource_name="customers/123/campaignBudgets/555")]
+        mock_budget_service.mutate_campaign_budgets.return_value = mock_response
+
+        def service_router(name):
+            if name == "GoogleAdsService":
+                return mock_search_service
+            return mock_budget_service
+
+        mock_get_service.side_effect = service_router
+
+        result = assert_success(remove_budget("123", "555"))
+        assert "removed successfully" in result["message"]
+        assert result["data"]["resource_name"] == "customers/123/campaignBudgets/555"
+
+    @patch("mcp_google_ads.tools.budgets.get_service")
+    @patch("mcp_google_ads.tools.budgets.get_client")
+    @patch("mcp_google_ads.tools.budgets.resolve_customer_id", return_value="123")
+    def test_rejects_linked_budget(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.budgets import remove_budget
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        mock_search_row = MagicMock()
+        mock_search_row.campaign_budget.id = 555
+        mock_search_row.campaign_budget.reference_count = 2
+        mock_search_service = MagicMock()
+        mock_search_service.search.return_value = [mock_search_row]
+        mock_get_service.return_value = mock_search_service
+
+        result = assert_error(remove_budget("123", "555"))
+        assert "still linked to 2 campaign(s)" in result["error"]
+
+    @patch("mcp_google_ads.tools.budgets.get_service")
+    @patch("mcp_google_ads.tools.budgets.get_client")
+    @patch("mcp_google_ads.tools.budgets.resolve_customer_id", return_value="123")
+    def test_rejects_not_found(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.budgets import remove_budget
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        mock_search_service = MagicMock()
+        mock_search_service.search.return_value = []
+        mock_get_service.return_value = mock_search_service
+
+        result = assert_error(remove_budget("123", "999"))
+        assert "not found" in result["error"]
+
+    def test_rejects_invalid_budget_id(self):
+        from mcp_google_ads.tools.budgets import remove_budget
+
+        result = assert_error(remove_budget("123", "abc"))
+        assert "Failed to remove budget" in result["error"]
+
+    @patch("mcp_google_ads.tools.budgets.resolve_customer_id", side_effect=Exception("No ID"))
+    def test_error_handling(self, mock_resolve):
+        from mcp_google_ads.tools.budgets import remove_budget
+
+        result = assert_error(remove_budget("", "555"))
+        assert "Failed to remove budget" in result["error"]
+
+    @patch("mcp_google_ads.tools.budgets.get_service")
+    @patch("mcp_google_ads.tools.budgets.get_client")
+    @patch("mcp_google_ads.tools.budgets.resolve_customer_id", return_value="123")
+    def test_resource_name_format(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.budgets import remove_budget
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        mock_search_row = MagicMock()
+        mock_search_row.campaign_budget.id = 777
+        mock_search_row.campaign_budget.reference_count = 0
+        mock_search_service = MagicMock()
+        mock_search_service.search.return_value = [mock_search_row]
+
+        mock_budget_service = MagicMock()
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(resource_name="customers/123/campaignBudgets/777")]
+        mock_budget_service.mutate_campaign_budgets.return_value = mock_response
+
+        def service_router(name):
+            if name == "GoogleAdsService":
+                return mock_search_service
+            return mock_budget_service
+
+        mock_get_service.side_effect = service_router
+
+        assert_success(remove_budget("123", "777"))
+
+        operation = client.get_type("CampaignBudgetOperation")
+        assert operation.remove == "customers/123/campaignBudgets/777"

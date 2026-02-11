@@ -1,4 +1,4 @@
-"""Budget management tools (4 tools)."""
+"""Budget management tools (5 tools)."""
 
 from __future__ import annotations
 
@@ -197,3 +197,51 @@ def update_budget(
     except Exception as e:
         logger.error("Failed to update budget: %s", e, exc_info=True)
         return error_response(f"Failed to update budget: {e}")
+
+
+@mcp.tool()
+def remove_budget(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    budget_id: Annotated[str, "The budget ID to remove"],
+) -> str:
+    """Remove a campaign budget. Budget must not be linked to any campaign (reference_count = 0).
+
+    Use get_budget to check reference_count before removing. Unlink campaigns first if needed.
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        safe_id = validate_numeric_id(budget_id, "budget_id")
+        client = get_client()
+
+        # Verificar reference_count antes de remover
+        search_service = get_service("GoogleAdsService")
+        query = f"""
+            SELECT campaign_budget.id, campaign_budget.reference_count
+            FROM campaign_budget
+            WHERE campaign_budget.id = {safe_id}
+        """
+        response = search_service.search(customer_id=cid, query=query)
+        found = False
+        for row in response:
+            found = True
+            ref_count = row.campaign_budget.reference_count
+            if ref_count > 0:
+                return error_response(
+                    f"Budget {budget_id} still linked to {ref_count} campaign(s). Unlink campaigns first.",
+                    details={"reference_count": ref_count},
+                )
+        if not found:
+            return error_response(f"Budget {budget_id} not found")
+
+        service = get_service("CampaignBudgetService")
+        operation = client.get_type("CampaignBudgetOperation")
+        operation.remove = f"customers/{cid}/campaignBudgets/{safe_id}"
+
+        response = service.mutate_campaign_budgets(customer_id=cid, operations=[operation])
+        return success_response(
+            {"resource_name": response.results[0].resource_name},
+            message=f"Budget {budget_id} removed successfully",
+        )
+    except Exception as e:
+        logger.error("Failed to remove budget: %s", e, exc_info=True)
+        return error_response(f"Failed to remove budget: {e}")

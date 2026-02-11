@@ -130,12 +130,9 @@ def add_keywords(
                 criterion.cpc_bid_micros = to_micros(cpc_bid)
             operations.append(operation)
 
-        response = service.mutate_ad_group_criteria(customer_id=cid, operations=operations, partial_failure=True)
-        partial_errors = process_partial_failure(response)
+        response = service.mutate_ad_group_criteria(customer_id=cid, operations=operations)
         results = [r.resource_name for r in response.results]
         result_data = {"added": len(results), "resource_names": results}
-        if partial_errors:
-            result_data["partial_errors"] = partial_errors
         return success_response(
             result_data,
             message=f"{len(results)} keywords added to ad group {ad_group_id}",
