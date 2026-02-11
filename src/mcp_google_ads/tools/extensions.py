@@ -534,12 +534,13 @@ def link_asset_to_ad_group(
 @mcp.tool()
 def unlink_asset(
     customer_id: Annotated[str, "The Google Ads customer ID"],
-    resource_name: Annotated[str, "Full resource name of the asset link (e.g., customers/123/campaignAssets/456~789~SITELINK)"],
-    resource_type: Annotated[str, "Type: campaign or ad_group"] = "campaign",
+    resource_name: Annotated[str, "Full resource name of the asset link (e.g., customers/123/campaignAssets/456~789~SITELINK or customers/123/customerAssets/456~SITELINK)"],
+    resource_type: Annotated[str, "Type: campaign, ad_group, or customer"] = "campaign",
 ) -> str:
-    """Unlink an asset from a campaign or ad group.
+    """Unlink an asset from a campaign, ad group, or customer (account level).
 
     Use the resource_name from the link (not the asset itself).
+    For customer-level: customers/{id}/customerAssets/{asset_id}~{FIELD_TYPE}
     """
     try:
         cid = resolve_customer_id(customer_id)
@@ -550,6 +551,11 @@ def unlink_asset(
             operation = client.get_type("CampaignAssetOperation")
             operation.remove = resource_name
             response = service.mutate_campaign_assets(customer_id=cid, operations=[operation])
+        elif resource_type == "customer":
+            service = get_service("CustomerAssetService")
+            operation = client.get_type("CustomerAssetOperation")
+            operation.remove = resource_name
+            response = service.mutate_customer_assets(customer_id=cid, operations=[operation])
         else:
             service = get_service("AdGroupAssetService")
             operation = client.get_type("AdGroupAssetOperation")
@@ -563,3 +569,45 @@ def unlink_asset(
     except Exception as e:
         logger.error("Failed to unlink asset: %s", e, exc_info=True)
         return error_response(f"Failed to unlink asset: {e}")
+
+
+@mcp.tool()
+def unlink_customer_assets(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    asset_ids: Annotated[list[str], "List of asset IDs to unlink from account level"],
+    field_type: Annotated[str, "Asset field type: SITELINK, CALLOUT, STRUCTURED_SNIPPET, CALL, etc."] = "SITELINK",
+) -> str:
+    """Unlink multiple assets from the account (customer) level in batch.
+
+    This removes customer_asset links, stopping account-level assets from
+    propagating to campaigns that don't have their own assets of this type.
+    The assets themselves are NOT deleted, only the customer-level link is removed.
+
+    Resource name format: customers/{customer_id}/customerAssets/{asset_id}~{FIELD_TYPE}
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        client = get_client()
+
+        error = validate_batch(asset_ids, max_size=5000, item_name="asset_ids")
+        if error:
+            return error_response(error)
+
+        validate_enum_value(field_type, "field_type")
+        service = get_service("CustomerAssetService")
+
+        operations = []
+        for asset_id in asset_ids:
+            operation = client.get_type("CustomerAssetOperation")
+            operation.remove = f"customers/{cid}/customerAssets/{asset_id}~{field_type}"
+            operations.append(operation)
+
+        response = service.mutate_customer_assets(customer_id=cid, operations=operations)
+        results = [r.resource_name for r in response.results]
+        return success_response(
+            {"unlinked": len(results), "resource_names": results},
+            message=f"{len(results)} assets unlinked from account level",
+        )
+    except Exception as e:
+        logger.error("Failed to unlink customer assets: %s", e, exc_info=True)
+        return error_response(f"Failed to unlink customer assets: {e}")

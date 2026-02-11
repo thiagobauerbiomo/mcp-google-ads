@@ -5,7 +5,7 @@
 src/mcp_google_ads/
 ├── __init__.py        # __version__ = "0.1.0"
 ├── server.py          # Entry point (importa tools, roda mcp.run(), LOG_LEVEL via env)
-├── coordinator.py     # Singleton FastMCP("google-ads") com instructions detalhadas (123 tools)
+├── coordinator.py     # Singleton FastMCP("google-ads") com instructions detalhadas (125 tools)
 ├── auth.py            # GoogleAdsClient singleton via OAuth2 (retry com backoff exponencial)
 ├── config.py          # GoogleAdsConfig dataclass (env vars)
 ├── utils.py           # Helpers: resolve_customer_id, proto_to_dict, success/error_response,
@@ -26,7 +26,7 @@ src/mcp_google_ads/
     ├── reporting.py          # 14: campaign/adgroup/ad/keyword perf, search_terms, audience, geo, change_history, device, hourly, age_gender, placement, quality_score, comparison
     ├── dashboard.py          #  2: mcc_performance_summary, account_dashboard
     ├── audiences.py          #  6: list_segments, add_targeting, remove_targeting, suggest_geo, list_targeting, add_audience
-    ├── extensions.py         # 14: list_assets, sitelinks, callouts, snippets, call, remove, image, video, lead_form, price, promotion, link_campaign, link_ad_group, unlink
+    ├── extensions.py         # 16: list_assets, sitelinks, callouts, snippets, call, remove, image, video, lead_form, price, promotion, link_campaign, link_ad_group, unlink, unlink_customer_assets
     ├── labels.py             #  8: list, create, remove, apply_to_campaign/ad_group/ad/keyword, remove_from_resource
     ├── shared_sets.py        #  6: list, create, remove, list_members, link_to_campaign, unlink_from_campaign
     ├── conversions.py        #  6: list_actions, get_action, create_action, update_action, import_offline, list_goals
@@ -105,7 +105,7 @@ Todos os 14 reports suportam datas customizadas:
 - Auth com retry e backoff exponencial (3 tentativas)
 - Timeout de 30s em create_image_asset (urllib)
 
-## Testes (527 testes, 96% cobertura)
+## Testes (546 testes, 96% cobertura)
 Cobertura de todos os 20 modulos de tools + utils, config, auth, server:
 ```
 tests/
@@ -128,7 +128,7 @@ tests/
 ├── test_dashboard.py        #  4 testes
 ├── test_audiences.py        # 17 testes (todas as 6 tools, bid modifiers, geo suggestions)
 ├── test_bidding.py          # 26 testes (todas as 5 tools, all strategy types, update fields)
-├── test_extensions.py       # 27 testes (14 tools, image URL, batch, partial_failure)
+├── test_extensions.py       # 33 testes (16 tools, image URL, batch, customer_asset unlink)
 ├── test_recommendations.py  # 15 testes (todas as 5 tools, metrics, apply/dismiss)
 ├── test_experiments.py      # 14 testes (todas as 5 tools, arms, schedule)
 ├── test_account_management.py # 7 testes

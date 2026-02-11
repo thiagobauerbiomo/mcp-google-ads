@@ -480,6 +480,143 @@ class TestUnlinkAsset:
         assert "ad_group" in result["message"]
 
 
+    @patch("mcp_google_ads.tools.extensions.get_service")
+    @patch("mcp_google_ads.tools.extensions.get_client")
+    @patch("mcp_google_ads.tools.extensions.resolve_customer_id", return_value="123")
+    def test_unlinks_from_customer(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.extensions import unlink_asset
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(resource_name="customers/123/customerAssets/777~SITELINK")]
+        mock_service = MagicMock()
+        mock_service.mutate_customer_assets.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(
+            unlink_asset(
+                customer_id="123",
+                resource_name="customers/123/customerAssets/777~SITELINK",
+                resource_type="customer",
+            )
+        )
+        assert result["data"]["resource_name"] == "customers/123/customerAssets/777~SITELINK"
+        assert "customer" in result["message"]
+
+    @patch("mcp_google_ads.tools.extensions.get_service")
+    @patch("mcp_google_ads.tools.extensions.get_client")
+    @patch("mcp_google_ads.tools.extensions.resolve_customer_id", return_value="123")
+    def test_unlink_asset_api_error(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.extensions import unlink_asset
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        mock_service = MagicMock()
+        mock_service.mutate_campaign_assets.side_effect = Exception("API error")
+        mock_get_service.return_value = mock_service
+
+        result = assert_error(
+            unlink_asset(
+                customer_id="123",
+                resource_name="customers/123/campaignAssets/555~777~SITELINK",
+                resource_type="campaign",
+            )
+        )
+        assert "Failed to unlink asset" in result["error"]
+
+
+class TestUnlinkCustomerAssets:
+    @patch("mcp_google_ads.tools.extensions.get_service")
+    @patch("mcp_google_ads.tools.extensions.get_client")
+    @patch("mcp_google_ads.tools.extensions.resolve_customer_id", return_value="123")
+    def test_unlinks_multiple_customer_assets(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.extensions import unlink_customer_assets
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        mock_response = MagicMock()
+        mock_response.results = [
+            MagicMock(resource_name="customers/123/customerAssets/111~SITELINK"),
+            MagicMock(resource_name="customers/123/customerAssets/222~SITELINK"),
+        ]
+        mock_service = MagicMock()
+        mock_service.mutate_customer_assets.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(
+            unlink_customer_assets("123", asset_ids=["111", "222"], field_type="SITELINK")
+        )
+        assert result["data"]["unlinked"] == 2
+        assert len(result["data"]["resource_names"]) == 2
+        assert "2 assets unlinked" in result["message"]
+
+        # Verifica que as operations foram construidas corretamente
+        call_args = mock_service.mutate_customer_assets.call_args
+        operations = call_args[1]["operations"]
+        assert len(operations) == 2
+
+    @patch("mcp_google_ads.tools.extensions.get_service")
+    @patch("mcp_google_ads.tools.extensions.get_client")
+    @patch("mcp_google_ads.tools.extensions.resolve_customer_id", return_value="123")
+    def test_unlinks_single_customer_asset(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.extensions import unlink_customer_assets
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        mock_response = MagicMock()
+        mock_response.results = [
+            MagicMock(resource_name="customers/123/customerAssets/555~CALLOUT"),
+        ]
+        mock_service = MagicMock()
+        mock_service.mutate_customer_assets.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(
+            unlink_customer_assets("123", asset_ids=["555"], field_type="CALLOUT")
+        )
+        assert result["data"]["unlinked"] == 1
+
+    @patch("mcp_google_ads.tools.extensions.get_service")
+    @patch("mcp_google_ads.tools.extensions.get_client")
+    @patch("mcp_google_ads.tools.extensions.resolve_customer_id", return_value="123")
+    def test_rejects_batch_too_large(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.extensions import unlink_customer_assets
+
+        result = assert_error(unlink_customer_assets("123", asset_ids=["x"] * 5001))
+        assert "5000" in result["error"]
+
+    @patch("mcp_google_ads.tools.extensions.get_service")
+    @patch("mcp_google_ads.tools.extensions.get_client")
+    @patch("mcp_google_ads.tools.extensions.resolve_customer_id", return_value="123")
+    def test_handles_api_error(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.extensions import unlink_customer_assets
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        mock_service = MagicMock()
+        mock_service.mutate_customer_assets.side_effect = Exception("Permission denied")
+        mock_get_service.return_value = mock_service
+
+        result = assert_error(
+            unlink_customer_assets("123", asset_ids=["111"], field_type="SITELINK")
+        )
+        assert "Failed to unlink customer assets" in result["error"]
+
+    def test_rejects_invalid_field_type(self):
+        from mcp_google_ads.tools.extensions import unlink_customer_assets
+
+        result = assert_error(
+            unlink_customer_assets("123", asset_ids=["111"], field_type="'; DROP TABLE")
+        )
+        assert "Failed to unlink customer assets" in result["error"]
+
+
 class TestCreatePriceAsset:
     @patch("mcp_google_ads.tools.extensions.get_service")
     @patch("mcp_google_ads.tools.extensions.get_client")
