@@ -9,7 +9,6 @@ from ..auth import get_client, get_service
 from ..coordinator import mcp
 from ..utils import (
     error_response,
-    process_partial_failure,
     resolve_customer_id,
     success_response,
     validate_batch,

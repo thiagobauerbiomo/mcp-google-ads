@@ -5,7 +5,7 @@
 src/mcp_google_ads/
 ├── __init__.py        # __version__ = "0.1.0"
 ├── server.py          # Entry point (importa tools, roda mcp.run(), LOG_LEVEL via env)
-├── coordinator.py     # Singleton FastMCP("google-ads") com instructions detalhadas (125 tools)
+├── coordinator.py     # Singleton FastMCP("google-ads") com instructions detalhadas (129 tools)
 ├── auth.py            # GoogleAdsClient singleton via OAuth2 (retry com backoff exponencial)
 ├── config.py          # GoogleAdsConfig dataclass (env vars)
 ├── utils.py           # Helpers: resolve_customer_id, proto_to_dict, success/error_response,
@@ -30,7 +30,7 @@ src/mcp_google_ads/
     ├── labels.py             #  8: list, create, remove, apply_to_campaign/ad_group/ad/keyword, remove_from_resource
     ├── shared_sets.py        #  6: list, create, remove, list_members, link_to_campaign, unlink_from_campaign
     ├── conversions.py        #  6: list_actions, get_action, create_action, update_action, import_offline, list_goals
-    ├── targeting.py          #  8: device_bid, create/list/remove_ad_schedule, exclude_geo, add_geo, add/remove_language
+    ├── targeting.py          # 12: device_bid, create/list/remove_ad_schedule, exclude_geo, add_geo, add/remove_language, age/gender/income_bid, demographic_batch
     ├── recommendations.py    #  5: list, get, apply, dismiss, get_optimization_score
     ├── experiments.py        #  5: list, create, get, promote, end
     └── search.py             #  1: execute_gaql (GAQL raw)
@@ -105,7 +105,7 @@ Todos os 14 reports suportam datas customizadas:
 - Auth com retry e backoff exponencial (3 tentativas)
 - Timeout de 30s em create_image_asset (urllib)
 
-## Testes (546 testes, 96% cobertura)
+## Testes (561 testes, 96% cobertura)
 Cobertura de todos os 20 modulos de tools + utils, config, auth, server:
 ```
 tests/
@@ -118,12 +118,12 @@ tests/
 ├── test_campaign_types.py   # 34 testes (todas as 8 tools, PMax, Display, Video, Shopping, DemandGen, App)
 ├── test_ad_groups.py        # 36 testes (todas as 6 tools, validação, error paths)
 ├── test_ads.py              # 51 testes (todas as 6 tools, RSA com pins, status, strength)
-├── test_keywords.py         # 36 testes (todas as 9 tools, batch, dedup, forecast)
+├── test_keywords.py         # 38 testes (todas as 9 tools, batch, dedup, forecast, geo, CPA)
 ├── test_reporting.py        # 55 testes (_run_report, _build_where, 14 reports)
 ├── test_labels.py           # 18 testes (todas as 8 tools, apply/remove)
 ├── test_conversions.py      # 16 testes (CRUD, offline import, batch, goals)
 ├── test_shared_sets.py      # 18 testes (todas as 6 tools, members, link/unlink)
-├── test_targeting.py        # 17 testes (todas as 7 tools, device bid, schedules, geo, language)
+├── test_targeting.py        # 29 testes (todas as 12 tools, device bid, schedules, geo, language, age/gender/income bid, demographic batch)
 ├── test_search.py           #  7 testes (execute_gaql protections)
 ├── test_dashboard.py        #  4 testes
 ├── test_audiences.py        # 17 testes (todas as 6 tools, bid modifiers, geo suggestions)

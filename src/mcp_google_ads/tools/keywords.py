@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import date, timedelta
 from typing import Annotated
 
 from google.api_core import protobuf_helpers
@@ -12,7 +13,6 @@ from ..coordinator import mcp
 from ..utils import (
     error_response,
     format_micros,
-    process_partial_failure,
     resolve_customer_id,
     success_response,
     to_micros,
@@ -372,51 +372,109 @@ def generate_keyword_ideas(
 def get_keyword_forecast(
     customer_id: Annotated[str, "The Google Ads customer ID"],
     keywords: Annotated[list[str], "Keywords to forecast"],
-    match_type: Annotated[str, "Match type: EXACT, PHRASE, BROAD"] = "BROAD",
-    daily_budget_micros: Annotated[int | None, "Daily budget in micros for forecast"] = None,
+    match_type: Annotated[str, "Match type: EXACT, PHRASE, BROAD"] = "EXACT",
+    daily_budget_micros: Annotated[int | None, "Daily budget in micros for forecast (e.g. 20_000_000 = R$20)"] = None,
+    max_cpc_bid_micros: Annotated[int | None, "Max CPC bid in micros per keyword (e.g. 4_000_000 = R$4)"] = None,
+    geo_target_ids: Annotated[list[str] | None, "Geo target IDs (e.g. ['2076'] for Brazil, ['1001773'] for São Paulo)"] = None,
+    language_id: Annotated[str | None, "Language criterion ID (1014=Portuguese, 1000=English)"] = None,
+    conversion_rate: Annotated[float, "Estimated conversion rate for CPA calculation (0.03 = 3%)"] = 0.03,
 ) -> str:
-    """Get performance forecasts for keywords (clicks, impressions, cost estimates).
+    """Get performance forecasts for keywords with CPA estimation.
 
-    Uses the Keyword Planner forecast endpoint for campaign planning.
+    Uses the Keyword Planner forecast endpoint. Returns campaign totals,
+    per-keyword breakdown, and estimated CPA based on conversion_rate.
+    Supports geo targeting, language, and max CPC bid.
     """
     try:
         cid = resolve_customer_id(customer_id)
+        validate_enum_value(match_type, "match_type")
         client = get_client()
         service = get_service("KeywordPlanIdeaService")
 
         request = client.get_type("GenerateKeywordForecastMetricsRequest")
         request.customer_id = cid
 
+        tomorrow = date.today() + timedelta(days=1)
+        request.forecast_period.start_date = tomorrow.strftime("%Y-%m-%d")
+        request.forecast_period.end_date = (tomorrow + timedelta(days=30)).strftime("%Y-%m-%d")
+
         campaign = request.campaign
-        if daily_budget_micros:
-            campaign.daily_budget_micros = daily_budget_micros
+        campaign.keyword_plan_network = client.enums.KeywordPlanNetworkEnum.GOOGLE_SEARCH
+        if daily_budget_micros or max_cpc_bid_micros:
+            manual_cpc = campaign.bidding_strategy.manual_cpc_bidding_strategy
+            if daily_budget_micros:
+                manual_cpc.daily_budget_micros = daily_budget_micros
+            if max_cpc_bid_micros:
+                manual_cpc.max_cpc_bid_micros = max_cpc_bid_micros
+
+        if geo_target_ids:
+            for geo_id in geo_target_ids:
+                geo_modifier = client.get_type("CriterionBidModifier")
+                geo_modifier.geo_target_constant = f"geoTargetConstants/{geo_id}"
+                campaign.geo_modifiers.append(geo_modifier)
+
+        if language_id:
+            campaign.language_constants.append(f"languageConstants/{language_id}")
 
         for kw_text in keywords:
-            ad_group = client.get_type("KeywordForecastAdGroup")
+            ad_group = client.get_type("ForecastAdGroup")
             biddable_keyword = client.get_type("BiddableKeyword")
             biddable_keyword.keyword.text = kw_text
-            validate_enum_value(match_type, "match_type")
             biddable_keyword.keyword.match_type = getattr(
                 client.enums.KeywordMatchTypeEnum, match_type
             )
+            if max_cpc_bid_micros:
+                biddable_keyword.max_cpc_bid_micros = max_cpc_bid_micros
             ad_group.biddable_keywords.append(biddable_keyword)
             campaign.ad_groups.append(ad_group)
 
         response = service.generate_keyword_forecast_metrics(request=request)
 
-        forecasts = []
+        result = {}
+
         if response.campaign_forecast_metrics:
             m = response.campaign_forecast_metrics
-            forecasts.append({
-                "type": "campaign_total",
-                "clicks": m.clicks,
-                "impressions": m.impressions,
-                "cost_micros": m.cost_micros,
-                "ctr": m.ctr,
-                "avg_cpc_micros": m.average_cpc_micros,
-            })
+            clicks = m.clicks or 0
+            impressions = m.impressions or 0
+            cost = m.cost_micros or 0
+            ctr = m.click_through_rate or 0
+            avg_cpc = m.average_cpc_micros or 0
+            conversions_api = m.conversions or 0
+            conversion_rate_api = m.conversion_rate or 0
+            avg_cpa_api = m.average_cpa_micros or 0
+            estimated_conversions = round(clicks * conversion_rate, 2)
+            estimated_cpa_brl = round(format_micros(cost) / estimated_conversions, 2) if estimated_conversions > 0 else None
+            result["campaign_total"] = {
+                "impressions": impressions,
+                "clicks": clicks,
+                "click_through_rate": round(ctr, 4),
+                "cost_brl": format_micros(cost),
+                "cost_micros": cost,
+                "avg_cpc_brl": format_micros(avg_cpc),
+                "avg_cpc_micros": avg_cpc,
+                "conversions_api": conversions_api,
+                "conversion_rate_api": round(conversion_rate_api, 4),
+                "avg_cpa_api_brl": format_micros(avg_cpa_api),
+                "avg_cpa_api_micros": avg_cpa_api,
+                "estimated_conversions_custom": estimated_conversions,
+                "estimated_cpa_custom_brl": estimated_cpa_brl,
+                "custom_conversion_rate_used": conversion_rate,
+            }
 
-        return success_response({"forecasts": forecasts})
+        forecast_start = tomorrow.strftime("%Y-%m-%d")
+        forecast_end = (tomorrow + timedelta(days=30)).strftime("%Y-%m-%d")
+        result["parameters"] = {
+            "keywords_count": len(keywords),
+            "match_type": match_type,
+            "daily_budget_brl": format_micros(daily_budget_micros) if daily_budget_micros else None,
+            "max_cpc_brl": format_micros(max_cpc_bid_micros) if max_cpc_bid_micros else None,
+            "geo_target_ids": geo_target_ids,
+            "language_id": language_id,
+            "conversion_rate": conversion_rate,
+            "forecast_period": f"{forecast_start} to {forecast_end}",
+        }
+
+        return success_response(result)
     except Exception as e:
         logger.error("Failed to get keyword forecast: %s", e, exc_info=True)
         return error_response(f"Failed to get keyword forecast: {e}")

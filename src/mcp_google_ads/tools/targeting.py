@@ -1,4 +1,4 @@
-"""Advanced targeting management tools (7 tools)."""
+"""Advanced targeting management tools (11 tools)."""
 
 from __future__ import annotations
 
@@ -271,3 +271,157 @@ def remove_language_targeting(
     except Exception as e:
         logger.error("Failed to remove language targeting: %s", e, exc_info=True)
         return error_response(f"Failed to remove language targeting: {e}")
+
+
+@mcp.tool()
+def set_age_bid_adjustment(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    ad_group_id: Annotated[str, "The ad group ID"],
+    age_range: Annotated[str, "Age range: AGE_RANGE_18_24, AGE_RANGE_25_34, AGE_RANGE_35_44, AGE_RANGE_45_54, AGE_RANGE_55_64, AGE_RANGE_65_UP"],
+    bid_modifier: Annotated[float, "Bid modifier (1.0 = no change, 1.2 = +20%, 0.7 = -30%)"],
+) -> str:
+    """Set an age range bid adjustment for an ad group.
+
+    Adjusts bids for specific age groups. Example: bid_modifier=1.2 bids 20% more for that age range.
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        safe_ag = validate_numeric_id(ad_group_id, "ad_group_id")
+        validate_enum_value(age_range, "age_range")
+        client = get_client()
+        service = get_service("AdGroupCriterionService")
+
+        operation = client.get_type("AdGroupCriterionOperation")
+        criterion = operation.create
+        criterion.ad_group = f"customers/{cid}/adGroups/{safe_ag}"
+        criterion.age_range.type_ = getattr(client.enums.AgeRangeTypeEnum, age_range)
+        criterion.bid_modifier = bid_modifier
+
+        response = service.mutate_ad_group_criteria(customer_id=cid, operations=[operation])
+        return success_response(
+            {"resource_name": response.results[0].resource_name},
+            message=f"Age {age_range} bid modifier set to {bid_modifier} on ad group {ad_group_id}",
+        )
+    except Exception as e:
+        logger.error("Failed to set age bid adjustment: %s", e, exc_info=True)
+        return error_response(f"Failed to set age bid adjustment: {e}")
+
+
+@mcp.tool()
+def set_gender_bid_adjustment(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    ad_group_id: Annotated[str, "The ad group ID"],
+    gender: Annotated[str, "Gender: MALE, FEMALE, UNDETERMINED"],
+    bid_modifier: Annotated[float, "Bid modifier (1.0 = no change, 1.2 = +20%, 0.7 = -30%)"],
+) -> str:
+    """Set a gender bid adjustment for an ad group.
+
+    Adjusts bids for specific genders. Example: bid_modifier=1.2 bids 20% more for that gender.
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        safe_ag = validate_numeric_id(ad_group_id, "ad_group_id")
+        validate_enum_value(gender, "gender")
+        client = get_client()
+        service = get_service("AdGroupCriterionService")
+
+        operation = client.get_type("AdGroupCriterionOperation")
+        criterion = operation.create
+        criterion.ad_group = f"customers/{cid}/adGroups/{safe_ag}"
+        criterion.gender.type_ = getattr(client.enums.GenderTypeEnum, gender)
+        criterion.bid_modifier = bid_modifier
+
+        response = service.mutate_ad_group_criteria(customer_id=cid, operations=[operation])
+        return success_response(
+            {"resource_name": response.results[0].resource_name},
+            message=f"Gender {gender} bid modifier set to {bid_modifier} on ad group {ad_group_id}",
+        )
+    except Exception as e:
+        logger.error("Failed to set gender bid adjustment: %s", e, exc_info=True)
+        return error_response(f"Failed to set gender bid adjustment: {e}")
+
+
+@mcp.tool()
+def set_income_bid_adjustment(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    ad_group_id: Annotated[str, "The ad group ID"],
+    income_range: Annotated[str, "Income range: INCOME_RANGE_0_50 (lower 50%), INCOME_RANGE_50_60, INCOME_RANGE_60_70, INCOME_RANGE_70_80, INCOME_RANGE_80_90, INCOME_RANGE_90_UP (top 10%)"],
+    bid_modifier: Annotated[float, "Bid modifier (1.0 = no change, 1.3 = +30%, 0.8 = -20%)"],
+) -> str:
+    """Set a household income bid adjustment for an ad group.
+
+    Income ranges are percentile-based: INCOME_RANGE_90_UP = top 10%, INCOME_RANGE_0_50 = lower 50%.
+    Note: Income data is estimated based on area demographics, not individual users.
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        safe_ag = validate_numeric_id(ad_group_id, "ad_group_id")
+        validate_enum_value(income_range, "income_range")
+        client = get_client()
+        service = get_service("AdGroupCriterionService")
+
+        operation = client.get_type("AdGroupCriterionOperation")
+        criterion = operation.create
+        criterion.ad_group = f"customers/{cid}/adGroups/{safe_ag}"
+        criterion.income_range.type_ = getattr(client.enums.IncomeRangeTypeEnum, income_range)
+        criterion.bid_modifier = bid_modifier
+
+        response = service.mutate_ad_group_criteria(customer_id=cid, operations=[operation])
+        return success_response(
+            {"resource_name": response.results[0].resource_name},
+            message=f"Income {income_range} bid modifier set to {bid_modifier} on ad group {ad_group_id}",
+        )
+    except Exception as e:
+        logger.error("Failed to set income bid adjustment: %s", e, exc_info=True)
+        return error_response(f"Failed to set income bid adjustment: {e}")
+
+
+@mcp.tool()
+def set_demographic_bid_adjustments(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    ad_group_id: Annotated[str, "The ad group ID"],
+    adjustments: Annotated[list[dict], "List of {type, value, bid_modifier}. type: 'age'|'gender'|'income'. value: enum name. bid_modifier: float."],
+) -> str:
+    """Set multiple demographic bid adjustments for an ad group in a single call.
+
+    Example: [{"type": "age", "value": "AGE_RANGE_25_34", "bid_modifier": 1.2},
+              {"type": "income", "value": "INCOME_RANGE_90_UP", "bid_modifier": 1.3}]
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        safe_ag = validate_numeric_id(ad_group_id, "ad_group_id")
+        client = get_client()
+        service = get_service("AdGroupCriterionService")
+
+        enum_map = {
+            "age": ("age_range", "type_", "AgeRangeTypeEnum"),
+            "gender": ("gender", "type_", "GenderTypeEnum"),
+            "income": ("income_range", "type_", "IncomeRangeTypeEnum"),
+        }
+
+        operations = []
+        for adj in adjustments:
+            demo_type = adj.get("type", "")
+            if demo_type not in enum_map:
+                return error_response(f"Invalid type '{demo_type}'. Use: age, gender, income")
+
+            field_name, attr_name, enum_name = enum_map[demo_type]
+            value = adj.get("value", "")
+            validate_enum_value(value, f"{demo_type}_value")
+
+            operation = client.get_type("AdGroupCriterionOperation")
+            criterion = operation.create
+            criterion.ad_group = f"customers/{cid}/adGroups/{safe_ag}"
+            criterion_field = getattr(criterion, field_name)
+            setattr(criterion_field, attr_name, getattr(getattr(client.enums, enum_name), value))
+            criterion.bid_modifier = adj.get("bid_modifier", 1.0)
+            operations.append(operation)
+
+        response = service.mutate_ad_group_criteria(customer_id=cid, operations=operations)
+        return success_response(
+            {"applied": len(response.results)},
+            message=f"{len(response.results)} demographic bid adjustments set on ad group {ad_group_id}",
+        )
+    except Exception as e:
+        logger.error("Failed to set demographic bid adjustments: %s", e, exc_info=True)
+        return error_response(f"Failed to set demographic bid adjustments: {e}")

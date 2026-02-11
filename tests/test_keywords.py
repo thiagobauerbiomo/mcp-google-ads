@@ -399,31 +399,39 @@ class TestGenerateKeywordIdeas:
 
 
 class TestGetKeywordForecast:
+    def _mock_campaign_metrics(self, clicks=150.0, impressions=5000.0, cost_micros=50_000_000, click_through_rate=0.03, avg_cpc=333_333, conversions=0.0, conversion_rate=0.0, average_cpa_micros=0):
+        m = MagicMock()
+        m.clicks = clicks
+        m.impressions = impressions
+        m.cost_micros = cost_micros
+        m.click_through_rate = click_through_rate
+        m.average_cpc_micros = avg_cpc
+        m.conversions = conversions
+        m.conversion_rate = conversion_rate
+        m.average_cpa_micros = average_cpa_micros
+        return m
+
     @patch("mcp_google_ads.tools.keywords.get_service")
     @patch("mcp_google_ads.tools.keywords.get_client")
     @patch("mcp_google_ads.tools.keywords.resolve_customer_id", return_value="123")
-    def test_returns_forecast(self, mock_resolve, mock_client, mock_get_service):
+    def test_returns_forecast_with_cpa(self, mock_resolve, mock_client, mock_get_service):
         from mcp_google_ads.tools.keywords import get_keyword_forecast
-
-        mock_metrics = MagicMock()
-        mock_metrics.clicks = 150.0
-        mock_metrics.impressions = 5000.0
-        mock_metrics.cost_micros = 50_000_000
-        mock_metrics.ctr = 0.03
-        mock_metrics.average_cpc_micros = 333_333
 
         mock_service = MagicMock()
         mock_response = MagicMock()
-        mock_response.campaign_forecast_metrics = mock_metrics
+        mock_response.campaign_forecast_metrics = self._mock_campaign_metrics()
+
         mock_service.generate_keyword_forecast_metrics.return_value = mock_response
         mock_get_service.return_value = mock_service
 
         result = assert_success(get_keyword_forecast("123", ["shoes", "sneakers"]))
-        assert len(result["data"]["forecasts"]) == 1
-        forecast = result["data"]["forecasts"][0]
-        assert forecast["type"] == "campaign_total"
-        assert forecast["clicks"] == 150.0
-        assert forecast["impressions"] == 5000.0
+        total = result["data"]["campaign_total"]
+        assert total["clicks"] == 150.0
+        assert total["impressions"] == 5000.0
+        assert total["cost_brl"] == 50.0
+        assert total["estimated_conversions_custom"] == 4.5  # 150 * 0.03
+        assert total["estimated_cpa_custom_brl"] == 11.11  # 50.0 / 4.5
+        assert result["data"]["parameters"]["match_type"] == "EXACT"
 
     @patch("mcp_google_ads.tools.keywords.get_service")
     @patch("mcp_google_ads.tools.keywords.get_client")
@@ -431,23 +439,18 @@ class TestGetKeywordForecast:
     def test_returns_forecast_with_budget(self, mock_resolve, mock_client, mock_get_service):
         from mcp_google_ads.tools.keywords import get_keyword_forecast
 
-        mock_metrics = MagicMock()
-        mock_metrics.clicks = 200.0
-        mock_metrics.impressions = 8000.0
-        mock_metrics.cost_micros = 100_000_000
-        mock_metrics.ctr = 0.025
-        mock_metrics.average_cpc_micros = 500_000
-
         mock_service = MagicMock()
         mock_response = MagicMock()
-        mock_response.campaign_forecast_metrics = mock_metrics
+        mock_response.campaign_forecast_metrics = self._mock_campaign_metrics(clicks=200.0, cost_micros=100_000_000)
+
         mock_service.generate_keyword_forecast_metrics.return_value = mock_response
         mock_get_service.return_value = mock_service
 
         result = assert_success(
             get_keyword_forecast("123", ["shoes"], daily_budget_micros=10_000_000)
         )
-        assert len(result["data"]["forecasts"]) == 1
+        assert result["data"]["campaign_total"]["cost_brl"] == 100.0
+        assert result["data"]["parameters"]["daily_budget_brl"] == 10.0
 
     @patch("mcp_google_ads.tools.keywords.get_service")
     @patch("mcp_google_ads.tools.keywords.get_client")
@@ -458,11 +461,12 @@ class TestGetKeywordForecast:
         mock_service = MagicMock()
         mock_response = MagicMock()
         mock_response.campaign_forecast_metrics = None
+
         mock_service.generate_keyword_forecast_metrics.return_value = mock_response
         mock_get_service.return_value = mock_service
 
         result = assert_success(get_keyword_forecast("123", ["shoes"]))
-        assert result["data"]["forecasts"] == []
+        assert "campaign_total" not in result["data"]
 
     @patch("mcp_google_ads.tools.keywords.resolve_customer_id", side_effect=Exception("api error"))
     def test_error_handling(self, mock_resolve):
@@ -470,6 +474,68 @@ class TestGetKeywordForecast:
 
         result = assert_error(get_keyword_forecast("", ["shoes"]))
         assert "Failed" in result["error"]
+
+    @patch("mcp_google_ads.tools.keywords.get_service")
+    @patch("mcp_google_ads.tools.keywords.get_client")
+    @patch("mcp_google_ads.tools.keywords.resolve_customer_id", return_value="123")
+    def test_with_geo_and_language(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.keywords import get_keyword_forecast
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        mock_service = MagicMock()
+        mock_response = MagicMock()
+        mock_response.campaign_forecast_metrics = self._mock_campaign_metrics()
+
+        mock_service.generate_keyword_forecast_metrics.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(
+            get_keyword_forecast("123", ["site"], geo_target_ids=["2076"], language_id="1014")
+        )
+        assert result["data"]["parameters"]["geo_target_ids"] == ["2076"]
+        assert result["data"]["parameters"]["language_id"] == "1014"
+
+    @patch("mcp_google_ads.tools.keywords.get_service")
+    @patch("mcp_google_ads.tools.keywords.get_client")
+    @patch("mcp_google_ads.tools.keywords.resolve_customer_id", return_value="123")
+    def test_with_max_cpc(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.keywords import get_keyword_forecast
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        mock_service = MagicMock()
+        mock_response = MagicMock()
+        mock_response.campaign_forecast_metrics = self._mock_campaign_metrics()
+
+        mock_service.generate_keyword_forecast_metrics.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(
+            get_keyword_forecast("123", ["site"], max_cpc_bid_micros=4_000_000)
+        )
+        assert result["data"]["parameters"]["max_cpc_brl"] == 4.0
+
+    @patch("mcp_google_ads.tools.keywords.get_service")
+    @patch("mcp_google_ads.tools.keywords.get_client")
+    @patch("mcp_google_ads.tools.keywords.resolve_customer_id", return_value="123")
+    def test_custom_conversion_rate(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.keywords import get_keyword_forecast
+
+        mock_service = MagicMock()
+        mock_response = MagicMock()
+        mock_response.campaign_forecast_metrics = self._mock_campaign_metrics(clicks=100.0, cost_micros=40_000_000)
+
+        mock_service.generate_keyword_forecast_metrics.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(get_keyword_forecast("123", ["site"], conversion_rate=0.05))
+        total = result["data"]["campaign_total"]
+        assert total["estimated_conversions_custom"] == 5.0  # 100 * 0.05
+        assert total["estimated_cpa_custom_brl"] == 8.0  # 40.0 / 5.0
+        assert total["custom_conversion_rate_used"] == 0.05
 
 
 class TestListNegativeKeywords:

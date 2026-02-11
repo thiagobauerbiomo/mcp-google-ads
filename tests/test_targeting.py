@@ -209,3 +209,129 @@ class TestRemoveLanguageTargeting:
 
         result = assert_error(remove_language_targeting("123", "111", "5555"))
         assert "Failed to remove language targeting" in result["error"]
+
+
+def _mock_ag_criterion_service(mock_client, mock_get_service):
+    mock_service = MagicMock()
+    mock_response = MagicMock()
+    mock_response.results = [MagicMock(resource_name="customers/123/adGroupCriteria/456~789")]
+    mock_service.mutate_ad_group_criteria.return_value = mock_response
+    mock_get_service.return_value = mock_service
+    return mock_service
+
+
+class TestSetAgeBidAdjustment:
+    @patch("mcp_google_ads.tools.targeting.get_service")
+    @patch("mcp_google_ads.tools.targeting.get_client")
+    @patch("mcp_google_ads.tools.targeting.resolve_customer_id", return_value="123")
+    def test_sets_age_bid(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.targeting import set_age_bid_adjustment
+
+        _mock_ag_criterion_service(mock_client, mock_get_service)
+        result = assert_success(set_age_bid_adjustment("123", "456", "AGE_RANGE_25_34", 1.2))
+        assert "AGE_RANGE_25_34" in result["message"]
+        assert "1.2" in result["message"]
+
+    def test_rejects_invalid_age_range(self):
+        from mcp_google_ads.tools.targeting import set_age_bid_adjustment
+
+        result = assert_error(set_age_bid_adjustment("123", "456", "DROP TABLE", 1.0))
+        assert "Failed to set age bid adjustment" in result["error"]
+
+    @patch("mcp_google_ads.tools.targeting.resolve_customer_id", side_effect=Exception("api error"))
+    def test_error_handling(self, mock_resolve):
+        from mcp_google_ads.tools.targeting import set_age_bid_adjustment
+
+        result = assert_error(set_age_bid_adjustment("123", "456", "AGE_RANGE_18_24", 1.0))
+        assert "Failed to set age bid adjustment" in result["error"]
+
+
+class TestSetGenderBidAdjustment:
+    @patch("mcp_google_ads.tools.targeting.get_service")
+    @patch("mcp_google_ads.tools.targeting.get_client")
+    @patch("mcp_google_ads.tools.targeting.resolve_customer_id", return_value="123")
+    def test_sets_gender_bid(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.targeting import set_gender_bid_adjustment
+
+        _mock_ag_criterion_service(mock_client, mock_get_service)
+        result = assert_success(set_gender_bid_adjustment("123", "456", "MALE", 1.1))
+        assert "MALE" in result["message"]
+
+    def test_rejects_invalid_gender(self):
+        from mcp_google_ads.tools.targeting import set_gender_bid_adjustment
+
+        result = assert_error(set_gender_bid_adjustment("123", "456", "INVALID", 1.0))
+        assert "Failed to set gender bid adjustment" in result["error"]
+
+    @patch("mcp_google_ads.tools.targeting.resolve_customer_id", side_effect=Exception("api error"))
+    def test_error_handling(self, mock_resolve):
+        from mcp_google_ads.tools.targeting import set_gender_bid_adjustment
+
+        result = assert_error(set_gender_bid_adjustment("123", "456", "FEMALE", 1.0))
+        assert "Failed to set gender bid adjustment" in result["error"]
+
+
+class TestSetIncomeBidAdjustment:
+    @patch("mcp_google_ads.tools.targeting.get_service")
+    @patch("mcp_google_ads.tools.targeting.get_client")
+    @patch("mcp_google_ads.tools.targeting.resolve_customer_id", return_value="123")
+    def test_sets_income_bid(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.targeting import set_income_bid_adjustment
+
+        _mock_ag_criterion_service(mock_client, mock_get_service)
+        result = assert_success(set_income_bid_adjustment("123", "456", "INCOME_RANGE_90_UP", 1.3))
+        assert "INCOME_RANGE_90_UP" in result["message"]
+        assert "1.3" in result["message"]
+
+    def test_rejects_invalid_income_range(self):
+        from mcp_google_ads.tools.targeting import set_income_bid_adjustment
+
+        result = assert_error(set_income_bid_adjustment("123", "456", "INVALID", 1.0))
+        assert "Failed to set income bid adjustment" in result["error"]
+
+    @patch("mcp_google_ads.tools.targeting.resolve_customer_id", side_effect=Exception("api error"))
+    def test_error_handling(self, mock_resolve):
+        from mcp_google_ads.tools.targeting import set_income_bid_adjustment
+
+        result = assert_error(set_income_bid_adjustment("123", "456", "INCOME_RANGE_0_50", 1.0))
+        assert "Failed to set income bid adjustment" in result["error"]
+
+
+class TestSetDemographicBidAdjustments:
+    @patch("mcp_google_ads.tools.targeting.get_service")
+    @patch("mcp_google_ads.tools.targeting.get_client")
+    @patch("mcp_google_ads.tools.targeting.resolve_customer_id", return_value="123")
+    def test_sets_multiple_demographics(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.targeting import set_demographic_bid_adjustments
+
+        mock_service = MagicMock()
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(), MagicMock(), MagicMock()]
+        mock_service.mutate_ad_group_criteria.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        adjustments = [
+            {"type": "age", "value": "AGE_RANGE_25_34", "bid_modifier": 1.2},
+            {"type": "gender", "value": "MALE", "bid_modifier": 1.1},
+            {"type": "income", "value": "INCOME_RANGE_90_UP", "bid_modifier": 1.3},
+        ]
+        result = assert_success(set_demographic_bid_adjustments("123", "456", adjustments))
+        assert result["data"]["applied"] == 3
+
+    @patch("mcp_google_ads.tools.targeting.get_service")
+    @patch("mcp_google_ads.tools.targeting.get_client")
+    @patch("mcp_google_ads.tools.targeting.resolve_customer_id", return_value="123")
+    def test_rejects_invalid_type(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.targeting import set_demographic_bid_adjustments
+
+        adjustments = [{"type": "invalid", "value": "SOMETHING", "bid_modifier": 1.0}]
+        result = assert_error(set_demographic_bid_adjustments("123", "456", adjustments))
+        assert "Invalid type" in result["error"]
+
+    @patch("mcp_google_ads.tools.targeting.resolve_customer_id", side_effect=Exception("api error"))
+    def test_error_handling(self, mock_resolve):
+        from mcp_google_ads.tools.targeting import set_demographic_bid_adjustments
+
+        adjustments = [{"type": "age", "value": "AGE_RANGE_18_24", "bid_modifier": 1.0}]
+        result = assert_error(set_demographic_bid_adjustments("123", "456", adjustments))
+        assert "Failed to set demographic bid adjustments" in result["error"]
