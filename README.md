@@ -1,16 +1,21 @@
 # MCP Google Ads Server
 
-MCP Server for Google Ads API v23 with full CRUD operations — **123 tools** across 20 categories. Built by [Biomo](https://biomo.com.br).
+MCP Server for Google Ads API v23 with full CRUD operations — **168 tools** across 23 modules. Built by [Biomo](https://biomo.com.br).
 
 ## Features
 
-- **123 tools** for complete Google Ads management
+- **168 tools** for complete Google Ads management
 - OAuth2 authentication with MCC (Manager) support
 - Safety-first: all resources created PAUSED by default
 - GAQL injection protection on all inputs
 - Structured logging in all modules
 - Consistent JSON responses with error handling
-- 527 tests, 96% coverage
+- Friendly error messages for common API errors (18 error codes mapped)
+- Rate limit and quota detection with actionable messages
+- AI-powered ad generation (text, images, audiences)
+- Campaign health diagnostics and budget forecasting
+- Batch operations for multi-resource status changes
+- 630+ tests, 96% coverage
 
 ## Quick Start
 
@@ -70,29 +75,32 @@ Add to `~/.claude/settings.json`:
 }
 ```
 
-## Tool Categories (123 tools)
+## Tool Categories (168 tools)
 
 | Category | Tools | Description |
 |----------|-------|-------------|
 | Accounts | 4 | List customers, get info, hierarchy, client list |
 | Account Management | 3 | Account links, billing, users |
-| Campaigns | 7 | CRUD, status management, labels |
-| Campaign Types | 8 | PMax, Display, Video, Shopping, Demand Gen, App campaigns |
-| Ad Groups | 6 | CRUD, status management |
-| Ads | 6 | List, create RSA, update, status, ad strength |
-| Keywords | 9 | CRUD, negatives, ideas, forecasts |
-| Budgets | 4 | CRUD for campaign budgets |
+| Campaigns | 9 | CRUD, status, labels, tracking template, clone |
+| Campaign Types | 14 | PMax, Display, Video, Shopping, Demand Gen, App, asset groups, listing groups |
+| Ad Groups | 7 | CRUD, status management, clone |
+| Ads | 7 | List, create RSA/RDA, update, status, ad strength |
+| Keywords | 11 | CRUD, negatives (campaign/ad group/shared/PMax), ideas, forecasts |
+| Budgets | 5 | CRUD + remove for campaign budgets |
 | Bidding | 5 | Portfolio strategies, campaign assignment |
-| Reporting | 14 | Performance reports across all dimensions |
+| Reporting | 21 | Campaign, ad group, ad, keyword, search terms, audience, geo, device, hourly, age/gender, placement, quality score, comparison, PMax insights, auction insights, landing page, asset performance, shopping, industry benchmarks |
 | Dashboard | 2 | MCC summary, account dashboard |
-| Audiences | 6 | Segments, targeting, geo suggestions |
-| Extensions | 14 | Assets: sitelinks, callouts, snippets, call, image, video, lead form, price, promotion |
+| Audiences | 12 | Segments, targeting, geo suggestions, custom audiences, signals |
+| Extensions | 16 | Assets: sitelinks, callouts, snippets, call, image, video, lead form, price, promotion, link/unlink |
 | Labels | 8 | CRUD, apply to campaigns/ad groups/ads/keywords |
 | Shared Sets | 6 | Negative keyword lists, campaign linking |
 | Conversions | 6 | Actions, offline imports, goals |
-| Targeting | 7 | Device bids, ad schedules, geo, language |
+| Targeting | 14 | Device bids, ad schedules, geo, language, demographics, proximity |
 | Recommendations | 5 | List, get, apply, dismiss, optimization score |
 | Experiments | 5 | A/B testing: create, promote, end |
+| Batch | 1 | Multi-resource status changes in one call |
+| Diagnostics | 3 | Campaign health check, landing page validation, budget forecast |
+| AI Generation | 3 | AI-generated ad text, images, audience definitions |
 | GAQL | 1 | Raw SELECT-only query execution |
 
 ## Safety

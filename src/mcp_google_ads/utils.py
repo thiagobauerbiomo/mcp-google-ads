@@ -155,6 +155,27 @@ def process_partial_failure(response) -> list[dict] | None:
     return errors or None
 
 
+def check_rate_limit_error(error: Exception) -> str | None:
+    """Check if an exception is a rate limit error and return a friendly message.
+
+    Returns friendly message if it's a rate limit error, None otherwise.
+    """
+    error_str = str(error).upper()
+    if "RATE_EXCEEDED" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+        return (
+            "Limite de requisições da API atingido. "
+            "Aguarde 30-60 segundos antes de tentar novamente. "
+            "Dica: use batch operations para reduzir o número de chamadas."
+        )
+    if "QUOTA_ERROR" in error_str or "QUOTA_EXCEEDED" in error_str:
+        return (
+            "Cota diária da API Google Ads excedida. "
+            "A cota será renovada à meia-noite (horário do Pacífico). "
+            "Considere otimizar chamadas ou solicitar aumento de cota."
+        )
+    return None
+
+
 def build_date_clause(
     date_range: str | None = None,
     start_date: str | None = None,

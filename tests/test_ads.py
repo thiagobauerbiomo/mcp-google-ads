@@ -893,3 +893,117 @@ class TestGetAdStrength:
 
         result = assert_error(get_ad_strength("123"))
         assert "Failed to get ad strength" in result["error"]
+
+
+class TestCreateResponsiveDisplayAd:
+    @patch("mcp_google_ads.tools.ads.get_service")
+    @patch("mcp_google_ads.tools.ads.get_client")
+    @patch("mcp_google_ads.tools.ads.resolve_customer_id", return_value="123")
+    def test_creates_rda(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.ads import create_responsive_display_ad
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        mock_service = MagicMock()
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(resource_name="customers/123/adGroupAds/111~222")]
+        mock_service.mutate_ad_group_ads.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(
+            create_responsive_display_ad(
+                "123", "111", "https://example.com",
+                headlines=["Headline 1", "Headline 2"],
+                long_headline="This is a long headline for display",
+                descriptions=["Description 1"],
+                business_name="Test Biz",
+                marketing_images=["customers/123/assets/img1"],
+            )
+        )
+        assert result["data"]["status"] == "PAUSED"
+        assert "Responsive Display Ad created" in result["message"]
+
+    @patch("mcp_google_ads.tools.ads.get_service")
+    @patch("mcp_google_ads.tools.ads.get_client")
+    @patch("mcp_google_ads.tools.ads.resolve_customer_id", return_value="123")
+    def test_with_square_and_logo(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.ads import create_responsive_display_ad
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        mock_service = MagicMock()
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(resource_name="customers/123/adGroupAds/111~333")]
+        mock_service.mutate_ad_group_ads.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(
+            create_responsive_display_ad(
+                "123", "111", "https://example.com",
+                headlines=["H1"],
+                long_headline="Long headline test",
+                descriptions=["D1"],
+                business_name="Biz",
+                marketing_images=["customers/123/assets/img1"],
+                square_marketing_images=["customers/123/assets/sq1"],
+                logo_images=["customers/123/assets/logo1"],
+            )
+        )
+        assert result["data"]["status"] == "PAUSED"
+
+    def test_too_many_headlines(self):
+        from mcp_google_ads.tools.ads import create_responsive_display_ad
+
+        result = assert_error(
+            create_responsive_display_ad(
+                "123", "111", "https://example.com",
+                headlines=["H1", "H2", "H3", "H4", "H5", "H6"],
+                long_headline="Long",
+                descriptions=["D1"],
+                business_name="Biz",
+                marketing_images=["customers/123/assets/img1"],
+            )
+        )
+        assert "Headlines must be between 1 and 5" in result["error"]
+
+    def test_no_marketing_images(self):
+        from mcp_google_ads.tools.ads import create_responsive_display_ad
+
+        result = assert_error(
+            create_responsive_display_ad(
+                "123", "111", "https://example.com",
+                headlines=["H1"],
+                long_headline="Long",
+                descriptions=["D1"],
+                business_name="Biz",
+                marketing_images=[],
+            )
+        )
+        assert "At least one marketing image" in result["error"]
+
+    @patch("mcp_google_ads.tools.ads.get_service")
+    @patch("mcp_google_ads.tools.ads.get_client")
+    @patch("mcp_google_ads.tools.ads.resolve_customer_id", return_value="123")
+    def test_api_exception(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.ads import create_responsive_display_ad
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        mock_service = MagicMock()
+        mock_service.mutate_ad_group_ads.side_effect = Exception("API error")
+        mock_get_service.return_value = mock_service
+
+        result = assert_error(
+            create_responsive_display_ad(
+                "123", "111", "https://example.com",
+                headlines=["H1"],
+                long_headline="Long",
+                descriptions=["D1"],
+                business_name="Biz",
+                marketing_images=["customers/123/assets/img1"],
+            )
+        )
+        assert "Failed to create RDA" in result["error"]

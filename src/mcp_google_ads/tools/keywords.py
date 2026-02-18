@@ -1,4 +1,4 @@
-"""Keyword management tools (9 tools)."""
+"""Keyword management tools (11 tools)."""
 
 from __future__ import annotations
 
@@ -527,3 +527,111 @@ def list_negative_keywords(
     except Exception as e:
         logger.error("Failed to list negative keywords: %s", e, exc_info=True)
         return error_response(f"Failed to list negative keywords: {e}")
+
+
+@mcp.tool()
+def add_negative_keywords_to_ad_group(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    ad_group_id: Annotated[str, "The ad group ID"],
+    keywords: Annotated[list[dict], "List of {text, match_type} for negative keywords"],
+) -> str:
+    """Add negative keywords at the ad group level.
+
+    Useful for cross-negative between ad groups to prevent keyword cannibalization.
+    Example: [{"text": "free tarot", "match_type": "PHRASE"}]
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        safe_ag = validate_numeric_id(ad_group_id, "ad_group_id")
+
+        error = validate_batch(keywords, max_size=5000, required_fields=["text"], item_name="keywords")
+        if error:
+            return error_response(error)
+
+        seen = set()
+        unique_keywords = []
+        for kw in keywords:
+            key = (kw["text"], kw.get("match_type", "BROAD"))
+            if key not in seen:
+                seen.add(key)
+                unique_keywords.append(kw)
+
+        client = get_client()
+        service = get_service("AdGroupCriterionService")
+
+        operations = []
+        for kw in unique_keywords:
+            operation = client.get_type("AdGroupCriterionOperation")
+            criterion = operation.create
+            criterion.ad_group = f"customers/{cid}/adGroups/{safe_ag}"
+            criterion.negative = True
+            criterion.keyword.text = kw["text"]
+            match = kw.get("match_type", "BROAD")
+            validate_enum_value(match, "match_type")
+            criterion.keyword.match_type = getattr(
+                client.enums.KeywordMatchTypeEnum, match
+            )
+            operations.append(operation)
+
+        response = service.mutate_ad_group_criteria(customer_id=cid, operations=operations)
+        return success_response(
+            {"added": len(response.results)},
+            message=f"{len(response.results)} negative keywords added to ad group {ad_group_id}",
+        )
+    except Exception as e:
+        logger.error("Failed to add negative keywords to ad group: %s", e, exc_info=True)
+        return error_response(f"Failed to add negative keywords to ad group: {e}")
+
+
+@mcp.tool()
+def add_pmax_negative_keywords(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    campaign_id: Annotated[str, "The Performance Max campaign ID"],
+    keywords: Annotated[list[dict], "List of {text, match_type} for negative keywords"],
+) -> str:
+    """Add negative keywords to a Performance Max campaign.
+
+    Available since API v20+. Uses CampaignCriterionService with negative=True.
+    Example: [{"text": "free", "match_type": "BROAD"}, {"text": "curso tarot", "match_type": "PHRASE"}]
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        safe_campaign = validate_numeric_id(campaign_id, "campaign_id")
+
+        error = validate_batch(keywords, max_size=5000, required_fields=["text"], item_name="keywords")
+        if error:
+            return error_response(error)
+
+        seen = set()
+        unique_keywords = []
+        for kw in keywords:
+            key = (kw["text"], kw.get("match_type", "BROAD"))
+            if key not in seen:
+                seen.add(key)
+                unique_keywords.append(kw)
+
+        client = get_client()
+        service = get_service("CampaignCriterionService")
+
+        operations = []
+        for kw in unique_keywords:
+            operation = client.get_type("CampaignCriterionOperation")
+            criterion = operation.create
+            criterion.campaign = f"customers/{cid}/campaigns/{safe_campaign}"
+            criterion.negative = True
+            criterion.keyword.text = kw["text"]
+            match = kw.get("match_type", "BROAD")
+            validate_enum_value(match, "match_type")
+            criterion.keyword.match_type = getattr(
+                client.enums.KeywordMatchTypeEnum, match
+            )
+            operations.append(operation)
+
+        response = service.mutate_campaign_criteria(customer_id=cid, operations=operations)
+        return success_response(
+            {"added": len(response.results)},
+            message=f"{len(response.results)} negative keywords added to PMax campaign {campaign_id}",
+        )
+    except Exception as e:
+        logger.error("Failed to add PMax negative keywords: %s", e, exc_info=True)
+        return error_response(f"Failed to add PMax negative keywords: {e}")

@@ -588,3 +588,127 @@ class TestListNegativeKeywords:
 
         result = assert_error(list_negative_keywords(""))
         assert "Failed" in result["error"]
+
+
+class TestAddNegativeKeywordsToAdGroup:
+    @patch("mcp_google_ads.tools.keywords.get_service")
+    @patch("mcp_google_ads.tools.keywords.get_client")
+    @patch("mcp_google_ads.tools.keywords.resolve_customer_id", return_value="123")
+    def test_adds_negatives(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.keywords import add_negative_keywords_to_ad_group
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        mock_service = MagicMock()
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(), MagicMock()]
+        mock_service.mutate_ad_group_criteria.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(
+            add_negative_keywords_to_ad_group(
+                "123", "111",
+                [{"text": "free tarot", "match_type": "PHRASE"}, {"text": "curso", "match_type": "BROAD"}],
+            )
+        )
+        assert result["data"]["added"] == 2
+
+    @patch("mcp_google_ads.tools.keywords.get_service")
+    @patch("mcp_google_ads.tools.keywords.get_client")
+    @patch("mcp_google_ads.tools.keywords.resolve_customer_id", return_value="123")
+    def test_deduplicates(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.keywords import add_negative_keywords_to_ad_group
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        mock_service = MagicMock()
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock()]
+        mock_service.mutate_ad_group_criteria.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        assert_success(
+            add_negative_keywords_to_ad_group(
+                "123", "111",
+                [{"text": "free", "match_type": "BROAD"}, {"text": "free", "match_type": "BROAD"}],
+            )
+        )
+        # Should send only 1 operation (deduped)
+        ops = mock_service.mutate_ad_group_criteria.call_args[1]["operations"]
+        assert len(ops) == 1
+
+    def test_invalid_ad_group_id(self):
+        from mcp_google_ads.tools.keywords import add_negative_keywords_to_ad_group
+
+        result = assert_error(
+            add_negative_keywords_to_ad_group("123", "abc", [{"text": "test"}])
+        )
+        assert "inválido" in result["error"]
+
+    @patch("mcp_google_ads.tools.keywords.resolve_customer_id", return_value="123")
+    def test_missing_text_field(self, mock_resolve):
+        from mcp_google_ads.tools.keywords import add_negative_keywords_to_ad_group
+
+        result = assert_error(
+            add_negative_keywords_to_ad_group("123", "111", [{"match_type": "BROAD"}])
+        )
+        assert "missing required field" in result["error"]
+
+
+class TestAddPmaxNegativeKeywords:
+    @patch("mcp_google_ads.tools.keywords.get_service")
+    @patch("mcp_google_ads.tools.keywords.get_client")
+    @patch("mcp_google_ads.tools.keywords.resolve_customer_id", return_value="123")
+    def test_adds_pmax_negatives(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.keywords import add_pmax_negative_keywords
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        mock_service = MagicMock()
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(), MagicMock()]
+        mock_service.mutate_campaign_criteria.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(
+            add_pmax_negative_keywords(
+                "123", "555",
+                [{"text": "free", "match_type": "BROAD"}, {"text": "curso tarot", "match_type": "PHRASE"}],
+            )
+        )
+        assert result["data"]["added"] == 2
+        assert "PMax campaign" in result["message"]
+
+    @patch("mcp_google_ads.tools.keywords.get_service")
+    @patch("mcp_google_ads.tools.keywords.get_client")
+    @patch("mcp_google_ads.tools.keywords.resolve_customer_id", return_value="123")
+    def test_deduplicates(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.keywords import add_pmax_negative_keywords
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        mock_service = MagicMock()
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock()]
+        mock_service.mutate_campaign_criteria.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        add_pmax_negative_keywords(
+            "123", "555",
+            [{"text": "free", "match_type": "BROAD"}, {"text": "free", "match_type": "BROAD"}],
+        )
+        ops = mock_service.mutate_campaign_criteria.call_args[1]["operations"]
+        assert len(ops) == 1
+
+    @patch("mcp_google_ads.tools.keywords.resolve_customer_id", side_effect=Exception("No ID"))
+    def test_error_handling(self, mock_resolve):
+        from mcp_google_ads.tools.keywords import add_pmax_negative_keywords
+
+        result = assert_error(
+            add_pmax_negative_keywords("", "555", [{"text": "test"}])
+        )
+        assert "Failed to add PMax negative keywords" in result["error"]

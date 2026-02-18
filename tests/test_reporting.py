@@ -1065,3 +1065,259 @@ class TestPmaxSearchTermInsights:
         result = pmax_search_term_insights(customer_id="123")
         error_data = assert_error(result)
         assert "Failed to get PMax search term insights" in error_data["error"]
+
+
+class TestPmaxNetworkBreakdownReport:
+    @patch("mcp_google_ads.tools.reporting.get_service")
+    @patch("mcp_google_ads.tools.reporting.resolve_customer_id", return_value="123")
+    def test_returns_breakdown(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.reporting import pmax_network_breakdown_report
+
+        mock_row = MagicMock()
+        mock_row.segments.ad_network_type.name = "SEARCH"
+        mock_row.campaign.id = 111
+        mock_row.campaign.name = "PMax Campaign"
+        mock_row.metrics.impressions = 1000
+        mock_row.metrics.clicks = 100
+        mock_row.metrics.cost_micros = 50_000_000
+        mock_row.metrics.conversions = 10.0
+        mock_row.metrics.conversions_value = 500.0
+        mock_row.metrics.ctr = 0.1
+        mock_row.metrics.average_cpc = 500_000
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = [mock_row]
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(pmax_network_breakdown_report("123"))
+        assert result["data"]["count"] == 1
+        assert result["data"]["network_breakdown"][0]["network"] == "SEARCH"
+
+    @patch("mcp_google_ads.tools.reporting.get_service")
+    @patch("mcp_google_ads.tools.reporting.resolve_customer_id", return_value="123")
+    def test_api_exception(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.reporting import pmax_network_breakdown_report
+
+        mock_service = MagicMock()
+        mock_service.search.side_effect = Exception("API error")
+        mock_get_service.return_value = mock_service
+
+        result = assert_error(pmax_network_breakdown_report("123"))
+        assert "Failed" in result["error"]
+
+
+class TestAuctionInsightsReport:
+    @patch("mcp_google_ads.tools.reporting.get_service")
+    @patch("mcp_google_ads.tools.reporting.resolve_customer_id", return_value="123")
+    def test_returns_insights(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.reporting import auction_insights_report
+
+        mock_row = MagicMock()
+        mock_row.auction_insight.display_domain = "competitor.com"
+        mock_row.metrics.auction_insight_search_impression_share = 0.25
+        mock_row.metrics.auction_insight_search_overlap_rate = 0.30
+        mock_row.metrics.auction_insight_search_position_above_rate = 0.15
+        mock_row.metrics.auction_insight_search_top_impression_percentage = 0.40
+        mock_row.metrics.auction_insight_search_absolute_top_impression_percentage = 0.20
+        mock_row.metrics.auction_insight_search_outranking_share = 0.35
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = [mock_row]
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(auction_insights_report("123"))
+        assert result["data"]["count"] == 1
+        assert result["data"]["auction_insights"][0]["domain"] == "competitor.com"
+
+    @patch("mcp_google_ads.tools.reporting.get_service")
+    @patch("mcp_google_ads.tools.reporting.resolve_customer_id", return_value="123")
+    def test_api_exception(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.reporting import auction_insights_report
+
+        mock_service = MagicMock()
+        mock_service.search.side_effect = Exception("API error")
+        mock_get_service.return_value = mock_service
+
+        result = assert_error(auction_insights_report("123"))
+        assert "Failed" in result["error"]
+
+
+class TestLandingPageReport:
+    @patch("mcp_google_ads.tools.reporting.get_service")
+    @patch("mcp_google_ads.tools.reporting.resolve_customer_id", return_value="123")
+    def test_returns_landing_pages(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.reporting import landing_page_report
+
+        mock_row = MagicMock()
+        mock_row.landing_page_view.unexpanded_final_url = "https://example.com"
+        mock_row.campaign.id = 111
+        mock_row.campaign.name = "Test Campaign"
+        mock_row.metrics.impressions = 500
+        mock_row.metrics.clicks = 50
+        mock_row.metrics.cost_micros = 25_000_000
+        mock_row.metrics.conversions = 5.0
+        mock_row.metrics.conversions_value = 250.0
+        mock_row.metrics.ctr = 0.1
+        mock_row.metrics.average_cpc = 500_000
+        mock_row.metrics.cost_per_conversion = 5_000_000
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = [mock_row]
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(landing_page_report("123"))
+        assert result["data"]["count"] == 1
+        assert result["data"]["landing_pages"][0]["landing_page_url"] == "https://example.com"
+
+    @patch("mcp_google_ads.tools.reporting.get_service")
+    @patch("mcp_google_ads.tools.reporting.resolve_customer_id", return_value="123")
+    def test_api_exception(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.reporting import landing_page_report
+
+        mock_service = MagicMock()
+        mock_service.search.side_effect = Exception("API error")
+        mock_get_service.return_value = mock_service
+
+        result = assert_error(landing_page_report("123"))
+        assert "Failed" in result["error"]
+
+
+class TestAssetPerformanceReport:
+    @patch("mcp_google_ads.tools.reporting.get_service")
+    @patch("mcp_google_ads.tools.reporting.resolve_customer_id", return_value="123")
+    def test_returns_assets(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.reporting import asset_performance_report
+
+        mock_row = MagicMock()
+        mock_row.ad_group_ad_asset_view.field_type.name = "HEADLINE"
+        mock_row.ad_group_ad_asset_view.performance_label.name = "BEST"
+        mock_row.asset.text_asset.text = "Great Headline"
+        mock_row.asset.type_.name = "TEXT"
+        mock_row.asset.name = ""
+        mock_row.campaign.id = 111
+        mock_row.campaign.name = "Test"
+        mock_row.ad_group.id = 222
+        mock_row.metrics.impressions = 1000
+        mock_row.metrics.clicks = 100
+        mock_row.metrics.cost_micros = 50_000_000
+        mock_row.metrics.conversions = 10.0
+        mock_row.metrics.ctr = 0.1
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = [mock_row]
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(asset_performance_report("123"))
+        assert result["data"]["count"] == 1
+        asset = result["data"]["assets"][0]
+        assert asset["performance_label"] == "BEST"
+        assert asset["text"] == "Great Headline"
+
+    @patch("mcp_google_ads.tools.reporting.get_service")
+    @patch("mcp_google_ads.tools.reporting.resolve_customer_id", return_value="123")
+    def test_api_exception(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.reporting import asset_performance_report
+
+        mock_service = MagicMock()
+        mock_service.search.side_effect = Exception("API error")
+        mock_get_service.return_value = mock_service
+
+        result = assert_error(asset_performance_report("123"))
+        assert "Failed" in result["error"]
+
+
+class TestShoppingPerformanceReport:
+    @patch("mcp_google_ads.tools.reporting.get_service")
+    @patch("mcp_google_ads.tools.reporting.resolve_customer_id", return_value="123")
+    def test_returns_products(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.reporting import shopping_performance_report
+
+        mock_row = MagicMock()
+        mock_row.shopping_performance_view.resource_name = "customers/123/shoppingPerformanceView"
+        mock_row.segments.product_item_id = "SKU-001"
+        mock_row.segments.product_title = "Product A"
+        mock_row.segments.product_brand = "Brand X"
+        mock_row.segments.product_type_l1 = "Category"
+        mock_row.campaign.id = 111
+        mock_row.campaign.name = "Shopping"
+        mock_row.metrics.impressions = 500
+        mock_row.metrics.clicks = 50
+        mock_row.metrics.cost_micros = 25_000_000
+        mock_row.metrics.conversions = 5.0
+        mock_row.metrics.conversions_value = 250.0
+        mock_row.metrics.ctr = 0.1
+        mock_row.metrics.average_cpc = 500_000
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = [mock_row]
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(shopping_performance_report("123"))
+        assert result["data"]["count"] == 1
+        assert result["data"]["products"][0]["product_id"] == "SKU-001"
+
+    @patch("mcp_google_ads.tools.reporting.get_service")
+    @patch("mcp_google_ads.tools.reporting.resolve_customer_id", return_value="123")
+    def test_api_exception(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.reporting import shopping_performance_report
+
+        mock_service = MagicMock()
+        mock_service.search.side_effect = Exception("API error")
+        mock_get_service.return_value = mock_service
+
+        result = assert_error(shopping_performance_report("123"))
+        assert "Failed" in result["error"]
+
+
+class TestGetIndustryBenchmarks:
+    @patch("mcp_google_ads.tools.reporting.get_service")
+    @patch("mcp_google_ads.tools.reporting.resolve_customer_id", return_value="123")
+    def test_returns_benchmarks(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.reporting import get_industry_benchmarks
+
+        mock_row = MagicMock()
+        mock_row.campaign.id = 111
+        mock_row.campaign.name = "Test"
+        mock_row.campaign.advertising_channel_type.name = "SEARCH"
+        mock_row.metrics.impressions = 10000
+        mock_row.metrics.clicks = 500
+        mock_row.metrics.cost_micros = 250_000_000
+        mock_row.metrics.conversions = 25.0
+        mock_row.metrics.conversions_value = 1250.0
+        mock_row.metrics.ctr = 0.05
+        mock_row.metrics.average_cpc = 500_000
+        mock_row.metrics.cost_per_conversion = 10_000_000
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = [mock_row]
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(get_industry_benchmarks("123"))
+        data = result["data"]
+        assert data["benchmarks"]["campaigns_analyzed"] == 1
+        assert data["benchmarks"]["avg_ctr"] == 5.0
+        assert len(data["campaigns"]) == 1
+
+    @patch("mcp_google_ads.tools.reporting.get_service")
+    @patch("mcp_google_ads.tools.reporting.resolve_customer_id", return_value="123")
+    def test_empty_results(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.reporting import get_industry_benchmarks
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = []
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(get_industry_benchmarks("123"))
+        assert result["data"]["benchmarks"]["campaigns_analyzed"] == 0
+
+    @patch("mcp_google_ads.tools.reporting.get_service")
+    @patch("mcp_google_ads.tools.reporting.resolve_customer_id", return_value="123")
+    def test_api_exception(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.reporting import get_industry_benchmarks
+
+        mock_service = MagicMock()
+        mock_service.search.side_effect = Exception("API error")
+        mock_get_service.return_value = mock_service
+
+        result = assert_error(get_industry_benchmarks("123"))
+        assert "Failed to get industry benchmarks" in result["error"]

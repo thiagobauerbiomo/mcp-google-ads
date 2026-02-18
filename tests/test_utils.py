@@ -262,3 +262,83 @@ class TestProtoToDict:
         result = proto_to_dict(BadProto())
 
         assert result == {"raw": "BadObject(data=123)"}
+
+
+class TestValidateBatch:
+    def test_valid_batch(self):
+        from mcp_google_ads.utils import validate_batch
+        result = validate_batch([{"text": "a"}, {"text": "b"}], max_size=5000, required_fields=["text"])
+        assert result is None
+
+    def test_exceeds_max(self):
+        from mcp_google_ads.utils import validate_batch
+        result = validate_batch(list(range(10)), max_size=5, item_name="items")
+        assert "Maximum 5" in result
+
+    def test_missing_required_field(self):
+        from mcp_google_ads.utils import validate_batch
+        result = validate_batch([{"text": "a"}, {"other": "b"}], max_size=5000, required_fields=["text"])
+        assert "missing required field" in result
+
+
+class TestProcessPartialFailure:
+    def test_no_partial_failure(self):
+        from mcp_google_ads.utils import process_partial_failure
+        response = MagicMock()
+        response.partial_failure_error = None
+        assert process_partial_failure(response) is None
+
+    def test_with_errors(self):
+        from mcp_google_ads.utils import process_partial_failure
+        response = MagicMock()
+        response.partial_failure_error.details = [MagicMock(__str__=lambda s: "error1")]
+        result = process_partial_failure(response)
+        assert result is not None
+        assert len(result) == 1
+
+
+class TestCheckRateLimitError:
+    def test_rate_exceeded(self):
+        from mcp_google_ads.utils import check_rate_limit_error
+        result = check_rate_limit_error(Exception("RATE_EXCEEDED: too many requests"))
+        assert result is not None
+        assert "Limite de requisições" in result
+
+    def test_quota_exceeded(self):
+        from mcp_google_ads.utils import check_rate_limit_error
+        result = check_rate_limit_error(Exception("QUOTA_ERROR: daily limit reached"))
+        assert result is not None
+        assert "Cota diária" in result
+
+    def test_resource_exhausted(self):
+        from mcp_google_ads.utils import check_rate_limit_error
+        result = check_rate_limit_error(Exception("RESOURCE_EXHAUSTED"))
+        assert result is not None
+        assert "Limite de requisições" in result
+
+    def test_not_rate_limit(self):
+        from mcp_google_ads.utils import check_rate_limit_error
+        result = check_rate_limit_error(Exception("Some other error"))
+        assert result is None
+
+
+class TestGetFriendlyError:
+    def test_known_error_code(self):
+        from mcp_google_ads.exceptions import get_friendly_error
+        result = get_friendly_error("AUTHENTICATION_ERROR")
+        assert "autenticação" in result
+
+    def test_known_error_in_message(self):
+        from mcp_google_ads.exceptions import get_friendly_error
+        result = get_friendly_error("UNKNOWN", "Something with POLICY_VIOLATION in it")
+        assert "política" in result
+
+    def test_unknown_error_returns_original(self):
+        from mcp_google_ads.exceptions import get_friendly_error
+        result = get_friendly_error("COMPLETELY_UNKNOWN", "Some original message")
+        assert result == "Some original message"
+
+    def test_unknown_error_without_message(self):
+        from mcp_google_ads.exceptions import get_friendly_error
+        result = get_friendly_error("COMPLETELY_UNKNOWN")
+        assert result == "COMPLETELY_UNKNOWN"

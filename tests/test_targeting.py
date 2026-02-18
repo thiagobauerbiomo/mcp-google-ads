@@ -335,3 +335,114 @@ class TestSetDemographicBidAdjustments:
         adjustments = [{"type": "age", "value": "AGE_RANGE_18_24", "bid_modifier": 1.0}]
         result = assert_error(set_demographic_bid_adjustments("123", "456", adjustments))
         assert "Failed to set demographic bid adjustments" in result["error"]
+
+
+class TestAddProximityTargeting:
+    @patch("mcp_google_ads.tools.targeting.get_service")
+    @patch("mcp_google_ads.tools.targeting.get_client")
+    @patch("mcp_google_ads.tools.targeting.resolve_customer_id", return_value="123")
+    def test_adds_proximity_decimal_degrees(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.targeting import add_proximity_targeting
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        mock_service = MagicMock()
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(resource_name="customers/123/campaignCriteria/111~999")]
+        mock_service.mutate_campaign_criteria.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(
+            add_proximity_targeting("123", "111", -23.5505, -46.6333, 10.0, "KILOMETERS")
+        )
+        assert "Proximity targeting added" in result["message"]
+
+    @patch("mcp_google_ads.tools.targeting.get_service")
+    @patch("mcp_google_ads.tools.targeting.get_client")
+    @patch("mcp_google_ads.tools.targeting.resolve_customer_id", return_value="123")
+    def test_adds_proximity_with_bid_modifier(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.targeting import add_proximity_targeting
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        mock_service = MagicMock()
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(resource_name="customers/123/campaignCriteria/111~999")]
+        mock_service.mutate_campaign_criteria.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(
+            add_proximity_targeting("123", "111", -23550520, -46633309, 5.0, "KILOMETERS", bid_modifier=1.2)
+        )
+        assert "Proximity targeting added" in result["message"]
+
+    @patch("mcp_google_ads.tools.targeting.get_service")
+    @patch("mcp_google_ads.tools.targeting.get_client")
+    @patch("mcp_google_ads.tools.targeting.resolve_customer_id", return_value="123")
+    def test_api_exception(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.targeting import add_proximity_targeting
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        mock_service = MagicMock()
+        mock_service.mutate_campaign_criteria.side_effect = Exception("API error")
+        mock_get_service.return_value = mock_service
+
+        result = assert_error(
+            add_proximity_targeting("123", "111", -23.55, -46.63, 10.0)
+        )
+        assert "Failed to add proximity targeting" in result["error"]
+
+
+class TestListProximityTargeting:
+    @patch("mcp_google_ads.tools.targeting.get_service")
+    @patch("mcp_google_ads.tools.targeting.resolve_customer_id", return_value="123")
+    def test_lists_proximities(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.targeting import list_proximity_targeting
+
+        mock_row = MagicMock()
+        mock_row.campaign_criterion.criterion_id = 999
+        mock_row.campaign_criterion.proximity.geo_point.latitude_in_micro_degrees = -23550520
+        mock_row.campaign_criterion.proximity.geo_point.longitude_in_micro_degrees = -46633309
+        mock_row.campaign_criterion.proximity.radius = 10.0
+        mock_row.campaign_criterion.proximity.radius_units.name = "KILOMETERS"
+        mock_row.campaign_criterion.proximity.address.city_name = "São Paulo"
+        mock_row.campaign_criterion.bid_modifier = 1.2
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = [mock_row]
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(list_proximity_targeting("123", "111"))
+        assert result["data"]["count"] == 1
+        prox = result["data"]["proximities"][0]
+        assert prox["latitude_micro"] == -23550520
+        assert prox["radius"] == 10.0
+        assert prox["city"] == "São Paulo"
+
+    @patch("mcp_google_ads.tools.targeting.get_service")
+    @patch("mcp_google_ads.tools.targeting.resolve_customer_id", return_value="123")
+    def test_empty_results(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.targeting import list_proximity_targeting
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = []
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(list_proximity_targeting("123", "111"))
+        assert result["data"]["count"] == 0
+
+    @patch("mcp_google_ads.tools.targeting.get_service")
+    @patch("mcp_google_ads.tools.targeting.resolve_customer_id", return_value="123")
+    def test_api_exception(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.targeting import list_proximity_targeting
+
+        mock_service = MagicMock()
+        mock_service.search.side_effect = Exception("Query failed")
+        mock_get_service.return_value = mock_service
+
+        result = assert_error(list_proximity_targeting("123", "111"))
+        assert "Failed to list proximity targeting" in result["error"]

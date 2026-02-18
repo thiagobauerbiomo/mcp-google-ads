@@ -1,4 +1,4 @@
-"""Campaign management tools (7 tools)."""
+"""Campaign management tools (9 tools)."""
 
 from __future__ import annotations
 
@@ -388,3 +388,213 @@ def list_campaign_labels(
     except Exception as e:
         logger.error("Failed to list campaign labels: %s", e, exc_info=True)
         return error_response(f"Failed to list campaign labels: {e}")
+
+
+@mcp.tool()
+def set_campaign_tracking_template(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    campaign_id: Annotated[str, "The campaign ID"],
+    tracking_template: Annotated[str, "Tracking URL template with ValueTrack parameters. Example: {lpurl}?utm_source=google&utm_medium=cpc&utm_campaign={_campaign}"],
+    custom_parameters: Annotated[list[dict] | None, "List of {key, value} custom parameters for {_key} placeholders"] = None,
+) -> str:
+    """Set a tracking URL template on a campaign for UTM/analytics tracking.
+
+    The template applies to all ads in the campaign unless overridden at ad group or ad level.
+    Use {lpurl} as the landing page placeholder. Example:
+    {lpurl}?utm_source=google&utm_medium=cpc&utm_campaign={_campaign}&utm_content={_adgroup}
+    Custom parameters: [{"key": "campaign", "value": "my_campaign_name"}]
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        safe_id = validate_numeric_id(campaign_id, "campaign_id")
+        client = get_client()
+        service = get_service("CampaignService")
+
+        campaign_op = client.get_type("CampaignOperation")
+        campaign = campaign_op.update
+        campaign.resource_name = f"customers/{cid}/campaigns/{safe_id}"
+        campaign.tracking_url_template = tracking_template
+
+        fields = ["tracking_url_template"]
+
+        if custom_parameters:
+            for param in custom_parameters:
+                custom_param = client.get_type("CustomParameter")
+                custom_param.key = param["key"]
+                custom_param.value = param["value"]
+                campaign.url_custom_parameters.append(custom_param)
+            fields.append("url_custom_parameters")
+
+        client.copy_from(
+            campaign_op.update_mask,
+            protobuf_helpers.field_mask_pb2.FieldMask(paths=fields),
+        )
+
+        response = service.mutate_campaigns(customer_id=cid, operations=[campaign_op])
+        return success_response(
+            {"resource_name": response.results[0].resource_name},
+            message=f"Tracking template set on campaign {campaign_id}",
+        )
+    except Exception as e:
+        logger.error("Failed to set campaign tracking template: %s", e, exc_info=True)
+        return error_response(f"Failed to set campaign tracking template: {e}")
+
+
+@mcp.tool()
+def clone_campaign(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    source_campaign_id: Annotated[str, "The campaign ID to clone"],
+    new_name: Annotated[str | None, "Name for the cloned campaign. Defaults to original name + ' [Clone]'"] = None,
+    budget_amount: Annotated[float | None, "Daily budget for clone (in account currency). Defaults to same as source."] = None,
+    copy_ad_groups: Annotated[bool, "Whether to copy ad groups with keywords"] = True,
+) -> str:
+    """Clone an entire campaign with its ad groups, keywords, and settings.
+
+    Creates a new PAUSED campaign with the same configuration. Ad groups are also created PAUSED.
+    Does NOT copy ads (they need to be created fresh for proper A/B testing).
+    Use clone_ad_group for more granular control over individual ad groups.
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        safe_source = validate_numeric_id(source_campaign_id, "source_campaign_id")
+        client = get_client()
+        search_service = get_service("GoogleAdsService")
+
+        # 1. Get source campaign details
+        query = f"""
+            SELECT
+                campaign.id,
+                campaign.name,
+                campaign.advertising_channel_type,
+                campaign.bidding_strategy_type,
+                campaign.network_settings.target_google_search,
+                campaign.network_settings.target_search_network,
+                campaign.network_settings.target_content_network,
+                campaign_budget.amount_micros
+            FROM campaign
+            WHERE campaign.id = {safe_source}
+        """
+        response = search_service.search(customer_id=cid, query=query)
+        source = None
+        for row in response:
+            source = row
+        if source is None:
+            return error_response(f"Source campaign {source_campaign_id} not found")
+
+        clone_name = new_name or f"{source.campaign.name} [Clone]"
+        budget_micros = to_micros(budget_amount) if budget_amount else source.campaign_budget.amount_micros
+
+        # 2. Create budget
+        budget_service = get_service("CampaignBudgetService")
+        budget_op = client.get_type("CampaignBudgetOperation")
+        budget = budget_op.create
+        budget.name = f"Budget for {clone_name}"
+        budget.amount_micros = budget_micros
+        budget.delivery_method = client.enums.BudgetDeliveryMethodEnum.STANDARD
+        budget.explicitly_shared = False
+        budget_response = budget_service.mutate_campaign_budgets(customer_id=cid, operations=[budget_op])
+        budget_rn = budget_response.results[0].resource_name
+
+        # 3. Create campaign
+        campaign_service = get_service("CampaignService")
+        campaign_op = client.get_type("CampaignOperation")
+        new_campaign = campaign_op.create
+        new_campaign.name = clone_name
+        new_campaign.status = client.enums.CampaignStatusEnum.PAUSED
+        new_campaign.campaign_budget = budget_rn
+        new_campaign.advertising_channel_type = source.campaign.advertising_channel_type
+        new_campaign.network_settings.target_google_search = source.campaign.network_settings.target_google_search
+        new_campaign.network_settings.target_search_network = source.campaign.network_settings.target_search_network
+        new_campaign.network_settings.target_content_network = source.campaign.network_settings.target_content_network
+
+        # Copy bidding strategy
+        bst = source.campaign.bidding_strategy_type.name
+        if bst == "MANUAL_CPC":
+            new_campaign.manual_cpc.enhanced_cpc_enabled = False
+        elif bst in ("MAXIMIZE_CLICKS", "TARGET_SPEND"):
+            client.copy_from(new_campaign.target_spend, client.get_type("TargetSpend")())
+        elif bst == "MAXIMIZE_CONVERSIONS":
+            client.copy_from(new_campaign.maximize_conversions, client.get_type("MaximizeConversions")())
+
+        campaign_response = campaign_service.mutate_campaigns(customer_id=cid, operations=[campaign_op])
+        new_campaign_rn = campaign_response.results[0].resource_name
+        new_campaign_id = new_campaign_rn.split("/")[-1]
+
+        cloned_ad_groups = 0
+
+        # 4. Clone ad groups if requested
+        if copy_ad_groups:
+            ag_query = f"""
+                SELECT
+                    ad_group.id,
+                    ad_group.name,
+                    ad_group.type,
+                    ad_group.cpc_bid_micros
+                FROM ad_group
+                WHERE campaign.id = {safe_source}
+                    AND ad_group.status != 'REMOVED'
+            """
+            ag_response = search_service.search(customer_id=cid, query=ag_query)
+            ag_service = get_service("AdGroupService")
+
+            for ag_row in ag_response:
+                # Create ad group
+                ag_op = client.get_type("AdGroupOperation")
+                new_ag = ag_op.create
+                new_ag.name = ag_row.ad_group.name
+                new_ag.status = client.enums.AdGroupStatusEnum.PAUSED
+                new_ag.campaign = f"customers/{cid}/campaigns/{new_campaign_id}"
+                new_ag.type_ = ag_row.ad_group.type_
+                if ag_row.ad_group.cpc_bid_micros:
+                    new_ag.cpc_bid_micros = ag_row.ad_group.cpc_bid_micros
+
+                ag_result = ag_service.mutate_ad_groups(customer_id=cid, operations=[ag_op])
+                new_ag_id = ag_result.results[0].resource_name.split("/")[-1]
+
+                # Copy keywords
+                kw_query = f"""
+                    SELECT
+                        ad_group_criterion.keyword.text,
+                        ad_group_criterion.keyword.match_type,
+                        ad_group_criterion.cpc_bid_micros,
+                        ad_group_criterion.negative
+                    FROM ad_group_criterion
+                    WHERE ad_group.id = {ag_row.ad_group.id}
+                        AND ad_group_criterion.type = 'KEYWORD'
+                        AND ad_group_criterion.status != 'REMOVED'
+                    LIMIT 5000
+                """
+                kw_response = search_service.search(customer_id=cid, query=kw_query)
+                kw_service = get_service("AdGroupCriterionService")
+                kw_ops = []
+                for kw_row in kw_response:
+                    op = client.get_type("AdGroupCriterionOperation")
+                    criterion = op.create
+                    criterion.ad_group = f"customers/{cid}/adGroups/{new_ag_id}"
+                    criterion.keyword.text = kw_row.ad_group_criterion.keyword.text
+                    criterion.keyword.match_type = kw_row.ad_group_criterion.keyword.match_type
+                    criterion.negative = kw_row.ad_group_criterion.negative
+                    if not kw_row.ad_group_criterion.negative:
+                        criterion.status = client.enums.AdGroupCriterionStatusEnum.ENABLED
+                    if kw_row.ad_group_criterion.cpc_bid_micros:
+                        criterion.cpc_bid_micros = kw_row.ad_group_criterion.cpc_bid_micros
+                    kw_ops.append(op)
+
+                if kw_ops:
+                    kw_service.mutate_ad_group_criteria(customer_id=cid, operations=kw_ops)
+
+                cloned_ad_groups += 1
+
+        return success_response(
+            {
+                "new_campaign_id": new_campaign_id,
+                "resource_name": new_campaign_rn,
+                "status": "PAUSED",
+                "budget": format_micros(budget_micros),
+                "cloned_ad_groups": cloned_ad_groups,
+            },
+            message=f"Campaign cloned as '{clone_name}' (PAUSED) with {cloned_ad_groups} ad groups",
+        )
+    except Exception as e:
+        logger.error("Failed to clone campaign: %s", e, exc_info=True)
+        return error_response(f"Failed to clone campaign: {e}")

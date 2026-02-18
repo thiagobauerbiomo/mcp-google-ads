@@ -1,4 +1,4 @@
-"""Ad Group management tools (6 tools)."""
+"""Ad Group management tools (7 tools)."""
 
 from __future__ import annotations
 
@@ -263,3 +263,139 @@ def remove_ad_group(
     except Exception as e:
         logger.error("Failed to remove ad group: %s", e, exc_info=True)
         return error_response(f"Failed to remove ad group: {e}")
+
+
+@mcp.tool()
+def clone_ad_group(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    source_ad_group_id: Annotated[str, "The ad group ID to clone from"],
+    new_name: Annotated[str | None, "Name for the cloned ad group. Defaults to original name + ' [Clone]'"] = None,
+    target_campaign_id: Annotated[str | None, "Campaign ID for the clone. Defaults to same campaign as source."] = None,
+    copy_keywords: Annotated[bool, "Whether to copy keywords from the source ad group"] = True,
+    copy_negative_keywords: Annotated[bool, "Whether to copy negative keywords"] = True,
+) -> str:
+    """Clone an ad group with its keywords and settings.
+
+    Creates a new PAUSED ad group with the same configuration, keywords, and negative keywords.
+    Useful for A/B testing or restructuring campaigns.
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        safe_source = validate_numeric_id(source_ad_group_id, "source_ad_group_id")
+        client = get_client()
+        search_service = get_service("GoogleAdsService")
+
+        # 1. Get source ad group details
+        query = f"""
+            SELECT
+                ad_group.name,
+                ad_group.type,
+                ad_group.cpc_bid_micros,
+                ad_group.target_cpa_micros,
+                campaign.id
+            FROM ad_group
+            WHERE ad_group.id = {safe_source}
+        """
+        response = search_service.search(customer_id=cid, query=query)
+        source = None
+        for row in response:
+            source = row
+        if source is None:
+            return error_response(f"Source ad group {source_ad_group_id} not found")
+
+        campaign_id = target_campaign_id or str(source.campaign.id)
+        clone_name = new_name or f"{source.ad_group.name} [Clone]"
+
+        # 2. Create the new ad group
+        ag_service = get_service("AdGroupService")
+        ag_op = client.get_type("AdGroupOperation")
+        new_ag = ag_op.create
+        new_ag.name = clone_name
+        new_ag.status = client.enums.AdGroupStatusEnum.PAUSED
+        new_ag.campaign = f"customers/{cid}/campaigns/{campaign_id}"
+        new_ag.type_ = source.ad_group.type_
+        if source.ad_group.cpc_bid_micros:
+            new_ag.cpc_bid_micros = source.ad_group.cpc_bid_micros
+
+        ag_response = ag_service.mutate_ad_groups(customer_id=cid, operations=[ag_op])
+        new_ag_resource = ag_response.results[0].resource_name
+        new_ag_id = new_ag_resource.split("/")[-1]
+
+        copied_keywords = 0
+        copied_negatives = 0
+
+        # 3. Copy keywords
+        if copy_keywords:
+            kw_query = f"""
+                SELECT
+                    ad_group_criterion.keyword.text,
+                    ad_group_criterion.keyword.match_type,
+                    ad_group_criterion.cpc_bid_micros,
+                    ad_group_criterion.negative
+                FROM ad_group_criterion
+                WHERE ad_group.id = {safe_source}
+                    AND ad_group_criterion.type = 'KEYWORD'
+                    AND ad_group_criterion.negative = false
+                    AND ad_group_criterion.status != 'REMOVED'
+                LIMIT 5000
+            """
+            kw_response = search_service.search(customer_id=cid, query=kw_query)
+            kw_service = get_service("AdGroupCriterionService")
+            kw_ops = []
+            for row in kw_response:
+                op = client.get_type("AdGroupCriterionOperation")
+                criterion = op.create
+                criterion.ad_group = f"customers/{cid}/adGroups/{new_ag_id}"
+                criterion.status = client.enums.AdGroupCriterionStatusEnum.ENABLED
+                criterion.keyword.text = row.ad_group_criterion.keyword.text
+                criterion.keyword.match_type = row.ad_group_criterion.keyword.match_type
+                if row.ad_group_criterion.cpc_bid_micros:
+                    criterion.cpc_bid_micros = row.ad_group_criterion.cpc_bid_micros
+                kw_ops.append(op)
+
+            if kw_ops:
+                kw_result = kw_service.mutate_ad_group_criteria(customer_id=cid, operations=kw_ops)
+                copied_keywords = len(kw_result.results)
+
+        # 4. Copy negative keywords
+        if copy_negative_keywords:
+            neg_query = f"""
+                SELECT
+                    ad_group_criterion.keyword.text,
+                    ad_group_criterion.keyword.match_type
+                FROM ad_group_criterion
+                WHERE ad_group.id = {safe_source}
+                    AND ad_group_criterion.type = 'KEYWORD'
+                    AND ad_group_criterion.negative = true
+                    AND ad_group_criterion.status != 'REMOVED'
+                LIMIT 5000
+            """
+            neg_response = search_service.search(customer_id=cid, query=neg_query)
+            neg_service = get_service("AdGroupCriterionService")
+            neg_ops = []
+            for row in neg_response:
+                op = client.get_type("AdGroupCriterionOperation")
+                criterion = op.create
+                criterion.ad_group = f"customers/{cid}/adGroups/{new_ag_id}"
+                criterion.negative = True
+                criterion.keyword.text = row.ad_group_criterion.keyword.text
+                criterion.keyword.match_type = row.ad_group_criterion.keyword.match_type
+                neg_ops.append(op)
+
+            if neg_ops:
+                neg_result = neg_service.mutate_ad_group_criteria(customer_id=cid, operations=neg_ops)
+                copied_negatives = len(neg_result.results)
+
+        return success_response(
+            {
+                "new_ad_group_id": new_ag_id,
+                "resource_name": new_ag_resource,
+                "status": "PAUSED",
+                "copied_keywords": copied_keywords,
+                "copied_negatives": copied_negatives,
+            },
+            message=f"Ad group cloned as '{clone_name}' (PAUSED) with {copied_keywords} keywords and {copied_negatives} negatives",
+        )
+    except Exception as e:
+        logger.error("Failed to clone ad group: %s", e, exc_info=True)
+        return error_response(f"Failed to clone ad group: {e}")

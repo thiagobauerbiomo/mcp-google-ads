@@ -611,3 +611,191 @@ class TestListCampaignLabels:
         assert result["data"]["count"] == 2
         assert result["data"]["labels"][0]["label_name"] == "Label A"
         assert result["data"]["labels"][1]["label_name"] == "Label B"
+
+
+class TestSetCampaignTrackingTemplate:
+    @patch("mcp_google_ads.tools.campaigns.get_service")
+    @patch("mcp_google_ads.tools.campaigns.get_client")
+    @patch("mcp_google_ads.tools.campaigns.resolve_customer_id", return_value="123")
+    def test_sets_tracking_template(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.campaigns import set_campaign_tracking_template
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        mock_service = MagicMock()
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(resource_name="customers/123/campaigns/111")]
+        mock_service.mutate_campaigns.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(
+            set_campaign_tracking_template("123", "111", "{lpurl}?utm_source=google")
+        )
+        assert "Tracking template set" in result["message"]
+
+    @patch("mcp_google_ads.tools.campaigns.get_service")
+    @patch("mcp_google_ads.tools.campaigns.get_client")
+    @patch("mcp_google_ads.tools.campaigns.resolve_customer_id", return_value="123")
+    def test_with_custom_parameters(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.campaigns import set_campaign_tracking_template
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        mock_service = MagicMock()
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(resource_name="customers/123/campaigns/111")]
+        mock_service.mutate_campaigns.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(
+            set_campaign_tracking_template(
+                "123", "111", "{lpurl}?utm_campaign={_campaign}",
+                custom_parameters=[{"key": "campaign", "value": "test_campaign"}],
+            )
+        )
+        assert "Tracking template set" in result["message"]
+
+    def test_invalid_campaign_id(self):
+        from mcp_google_ads.tools.campaigns import set_campaign_tracking_template
+
+        result = assert_error(
+            set_campaign_tracking_template("123", "abc", "{lpurl}?utm_source=google")
+        )
+        assert "inválido" in result["error"]
+
+    @patch("mcp_google_ads.tools.campaigns.get_service")
+    @patch("mcp_google_ads.tools.campaigns.get_client")
+    @patch("mcp_google_ads.tools.campaigns.resolve_customer_id", return_value="123")
+    def test_api_exception(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.campaigns import set_campaign_tracking_template
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        mock_service = MagicMock()
+        mock_service.mutate_campaigns.side_effect = Exception("API error")
+        mock_get_service.return_value = mock_service
+
+        result = assert_error(
+            set_campaign_tracking_template("123", "111", "{lpurl}?utm_source=google")
+        )
+        assert "Failed to set campaign tracking template" in result["error"]
+
+
+class TestCloneCampaign:
+    @patch("mcp_google_ads.tools.campaigns.get_service")
+    @patch("mcp_google_ads.tools.campaigns.get_client")
+    @patch("mcp_google_ads.tools.campaigns.resolve_customer_id", return_value="123")
+    def test_clones_basic(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.campaigns import clone_campaign
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        source_row = MagicMock()
+        source_row.campaign.id = 111
+        source_row.campaign.name = "Original"
+        source_row.campaign.advertising_channel_type = MagicMock()
+        source_row.campaign.bidding_strategy_type.name = "MANUAL_CPC"
+        source_row.campaign.network_settings.target_google_search = True
+        source_row.campaign.network_settings.target_search_network = False
+        source_row.campaign.network_settings.target_content_network = False
+        source_row.campaign_budget.amount_micros = 50_000_000
+
+        search_service = MagicMock()
+        search_service.search.return_value = [source_row]
+
+        budget_service = MagicMock()
+        budget_response = MagicMock()
+        budget_response.results = [MagicMock(resource_name="customers/123/campaignBudgets/99")]
+        budget_service.mutate_campaign_budgets.return_value = budget_response
+
+        campaign_service = MagicMock()
+        campaign_response = MagicMock()
+        campaign_response.results = [MagicMock(resource_name="customers/123/campaigns/222")]
+        campaign_service.mutate_campaigns.return_value = campaign_response
+
+        mock_get_service.side_effect = lambda name: {
+            "GoogleAdsService": search_service,
+            "CampaignBudgetService": budget_service,
+            "CampaignService": campaign_service,
+        }[name]
+
+        result = assert_success(clone_campaign("123", "111", copy_ad_groups=False))
+        assert result["data"]["new_campaign_id"] == "222"
+        assert result["data"]["status"] == "PAUSED"
+
+    @patch("mcp_google_ads.tools.campaigns.get_service")
+    @patch("mcp_google_ads.tools.campaigns.get_client")
+    @patch("mcp_google_ads.tools.campaigns.resolve_customer_id", return_value="123")
+    def test_source_not_found(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.campaigns import clone_campaign
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        search_service = MagicMock()
+        search_service.search.return_value = []
+        mock_get_service.return_value = search_service
+
+        result = assert_error(clone_campaign("123", "999"))
+        assert "not found" in result["error"]
+
+    @patch("mcp_google_ads.tools.campaigns.get_service")
+    @patch("mcp_google_ads.tools.campaigns.get_client")
+    @patch("mcp_google_ads.tools.campaigns.resolve_customer_id", return_value="123")
+    def test_custom_name_and_budget(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.campaigns import clone_campaign
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        source_row = MagicMock()
+        source_row.campaign.id = 111
+        source_row.campaign.name = "Original"
+        source_row.campaign.advertising_channel_type = MagicMock()
+        source_row.campaign.bidding_strategy_type.name = "MAXIMIZE_CLICKS"
+        source_row.campaign.network_settings.target_google_search = True
+        source_row.campaign.network_settings.target_search_network = False
+        source_row.campaign.network_settings.target_content_network = False
+        source_row.campaign_budget.amount_micros = 50_000_000
+
+        search_service = MagicMock()
+        search_service.search.return_value = [source_row]
+
+        budget_service = MagicMock()
+        budget_response = MagicMock()
+        budget_response.results = [MagicMock(resource_name="customers/123/campaignBudgets/99")]
+        budget_service.mutate_campaign_budgets.return_value = budget_response
+
+        campaign_service = MagicMock()
+        campaign_response = MagicMock()
+        campaign_response.results = [MagicMock(resource_name="customers/123/campaigns/333")]
+        campaign_service.mutate_campaigns.return_value = campaign_response
+
+        mock_get_service.side_effect = lambda name: {
+            "GoogleAdsService": search_service,
+            "CampaignBudgetService": budget_service,
+            "CampaignService": campaign_service,
+        }[name]
+
+        result = assert_success(
+            clone_campaign("123", "111", new_name="Custom Clone", budget_amount=100.0, copy_ad_groups=False)
+        )
+        assert result["data"]["new_campaign_id"] == "333"
+        assert "Custom Clone" in result["message"]
+
+    def test_invalid_campaign_id(self):
+        from mcp_google_ads.tools.campaigns import clone_campaign
+
+        result = assert_error(clone_campaign("123", "abc"))
+        assert "inválido" in result["error"]
+
+    @patch("mcp_google_ads.tools.campaigns.resolve_customer_id", side_effect=Exception("No ID"))
+    def test_error_handling(self, mock_resolve):
+        from mcp_google_ads.tools.campaigns import clone_campaign
+
+        result = assert_error(clone_campaign("", "111"))
+        assert "Failed to clone campaign" in result["error"]

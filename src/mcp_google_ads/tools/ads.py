@@ -1,4 +1,4 @@
-"""Ad management tools (6 tools)."""
+"""Ad management tools (7 tools)."""
 
 from __future__ import annotations
 
@@ -379,3 +379,85 @@ def get_ad_strength(
     except Exception as e:
         logger.error("Failed to get ad strength: %s", e, exc_info=True)
         return error_response(f"Failed to get ad strength: {e}")
+
+
+@mcp.tool()
+def create_responsive_display_ad(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    ad_group_id: Annotated[str, "The ad group ID (must be DISPLAY_STANDARD type)"],
+    final_url: Annotated[str, "Landing page URL"],
+    headlines: Annotated[list[str], "Short headlines (1-5, each max 30 chars)"],
+    long_headline: Annotated[str, "Long headline (max 90 chars)"],
+    descriptions: Annotated[list[str], "Descriptions (1-5, each max 90 chars)"],
+    business_name: Annotated[str, "Business name (max 25 chars)"],
+    marketing_images: Annotated[list[str], "List of marketing image asset resource names (1.91:1 landscape)"],
+    square_marketing_images: Annotated[list[str] | None, "List of square image asset resource names (1:1)"] = None,
+    logo_images: Annotated[list[str] | None, "List of logo asset resource names (1:1 or 4:1)"] = None,
+) -> str:
+    """Create a Responsive Display Ad (RDA) for Display or Demand Gen campaigns.
+
+    Requires at least one marketing image (landscape 1.91:1). Created PAUSED by default.
+    Image assets must be created first using create_image_asset.
+    """
+    try:
+        if len(headlines) < 1 or len(headlines) > 5:
+            return error_response("Headlines must be between 1 and 5")
+        if len(descriptions) < 1 or len(descriptions) > 5:
+            return error_response("Descriptions must be between 1 and 5")
+        if not marketing_images:
+            return error_response("At least one marketing image is required")
+
+        cid = resolve_customer_id(customer_id)
+        safe_ag = validate_numeric_id(ad_group_id, "ad_group_id")
+        client = get_client()
+        service = get_service("AdGroupAdService")
+
+        operation = client.get_type("AdGroupAdOperation")
+        ad_group_ad = operation.create
+        ad_group_ad.ad_group = f"customers/{cid}/adGroups/{safe_ag}"
+        ad_group_ad.status = client.enums.AdGroupAdStatusEnum.PAUSED
+
+        ad = ad_group_ad.ad
+        ad.final_urls.append(final_url)
+
+        rda = ad.responsive_display_ad
+        for h in headlines:
+            asset = client.get_type("AdTextAsset")
+            asset.text = h
+            rda.headlines.append(asset)
+
+        rda.long_headline.text = long_headline
+
+        for d in descriptions:
+            asset = client.get_type("AdTextAsset")
+            asset.text = d
+            rda.descriptions.append(asset)
+
+        rda.business_name = business_name
+
+        for img_rn in marketing_images:
+            img_asset = client.get_type("AdImageAsset")
+            img_asset.asset = img_rn
+            rda.marketing_images.append(img_asset)
+
+        if square_marketing_images:
+            for img_rn in square_marketing_images:
+                img_asset = client.get_type("AdImageAsset")
+                img_asset.asset = img_rn
+                rda.square_marketing_images.append(img_asset)
+
+        if logo_images:
+            for img_rn in logo_images:
+                img_asset = client.get_type("AdImageAsset")
+                img_asset.asset = img_rn
+                rda.logo_images.append(img_asset)
+
+        response = service.mutate_ad_group_ads(customer_id=cid, operations=[operation])
+        resource_name = response.results[0].resource_name
+        return success_response(
+            {"resource_name": resource_name, "status": "PAUSED"},
+            message=f"Responsive Display Ad created as PAUSED with {len(marketing_images)} images",
+        )
+    except Exception as e:
+        logger.error("Failed to create RDA: %s", e, exc_info=True)
+        return error_response(f"Failed to create RDA: {e}")

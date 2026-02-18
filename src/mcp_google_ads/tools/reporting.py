@@ -1,4 +1,4 @@
-"""Reporting tools (15 tools)."""
+"""Reporting tools (21 tools)."""
 
 from __future__ import annotations
 
@@ -1015,3 +1015,428 @@ def pmax_search_term_insights(
     except Exception as e:
         logger.error("Failed to get PMax search term insights: %s", e, exc_info=True)
         return error_response(f"Failed to get PMax search term insights: {e}")
+
+
+@mcp.tool()
+def pmax_network_breakdown_report(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    campaign_id: Annotated[str | None, "Filter by PMax campaign ID"] = None,
+    date_range: Annotated[str | None, "Predefined range: LAST_7_DAYS, LAST_30_DAYS, etc."] = None,
+    start_date: Annotated[str | None, "Start date YYYY-MM-DD"] = None,
+    end_date: Annotated[str | None, "End date YYYY-MM-DD"] = None,
+    limit: Annotated[int, "Maximum results"] = 50,
+) -> str:
+    """Get Performance Max campaign metrics broken down by network (Search, YouTube, Display, Gmail, Discover).
+
+    Uses segments.ad_network_type to show where PMax is spending budget across Google's networks.
+    """
+    try:
+        conditions = ["metrics.impressions > 0", "campaign.advertising_channel_type = 'PERFORMANCE_MAX'"]
+        if campaign_id:
+            conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
+
+        return _run_report(
+            customer_id=customer_id,
+            query_template="""
+                SELECT
+                    segments.ad_network_type,
+                    campaign.id,
+                    campaign.name,
+                    metrics.impressions,
+                    metrics.clicks,
+                    metrics.cost_micros,
+                    metrics.conversions,
+                    metrics.conversions_value,
+                    metrics.ctr,
+                    metrics.average_cpc
+                FROM campaign
+                {where}
+                ORDER BY metrics.cost_micros DESC
+                LIMIT {limit}
+            """,
+            field_extractor=lambda row: {
+                "network": row.segments.ad_network_type.name,
+                "campaign_id": str(row.campaign.id),
+                "campaign_name": row.campaign.name,
+                "impressions": row.metrics.impressions,
+                "clicks": row.metrics.clicks,
+                "cost": format_micros(row.metrics.cost_micros),
+                "conversions": round(row.metrics.conversions, 2),
+                "conversion_value": round(row.metrics.conversions_value, 2),
+                "ctr": round(row.metrics.ctr * 100, 2),
+                "avg_cpc": format_micros(row.metrics.average_cpc),
+            },
+            conditions=conditions,
+            date_range=date_range,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+            report_name="network_breakdown",
+        )
+    except Exception as e:
+        logger.error("Failed to get PMax network breakdown: %s", e, exc_info=True)
+        return error_response(f"Failed to get PMax network breakdown: {e}")
+
+
+@mcp.tool()
+def auction_insights_report(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    campaign_id: Annotated[str | None, "Filter by campaign ID"] = None,
+    date_range: Annotated[str | None, "Predefined range: LAST_7_DAYS, LAST_30_DAYS, etc."] = None,
+    start_date: Annotated[str | None, "Start date YYYY-MM-DD"] = None,
+    end_date: Annotated[str | None, "End date YYYY-MM-DD"] = None,
+    limit: Annotated[int, "Maximum results"] = 50,
+) -> str:
+    """Get auction insights showing competitor overlap and positioning.
+
+    Shows impression share, overlap rate, position above rate, top of page rate, and outranking share
+    for competitors in the same auctions.
+    """
+    try:
+        conditions = []
+        if campaign_id:
+            conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
+
+        return _run_report(
+            customer_id=customer_id,
+            query_template="""
+                SELECT
+                    auction_insight.display_domain,
+                    metrics.auction_insight_search_impression_share,
+                    metrics.auction_insight_search_overlap_rate,
+                    metrics.auction_insight_search_position_above_rate,
+                    metrics.auction_insight_search_top_impression_percentage,
+                    metrics.auction_insight_search_absolute_top_impression_percentage,
+                    metrics.auction_insight_search_outranking_share
+                FROM auction_insight
+                {where}
+                ORDER BY metrics.auction_insight_search_impression_share DESC
+                LIMIT {limit}
+            """,
+            field_extractor=lambda row: {
+                "domain": row.auction_insight.display_domain,
+                "impression_share": round(row.metrics.auction_insight_search_impression_share * 100, 2),
+                "overlap_rate": round(row.metrics.auction_insight_search_overlap_rate * 100, 2),
+                "position_above_rate": round(row.metrics.auction_insight_search_position_above_rate * 100, 2),
+                "top_of_page_rate": round(row.metrics.auction_insight_search_top_impression_percentage * 100, 2),
+                "abs_top_of_page_rate": round(row.metrics.auction_insight_search_absolute_top_impression_percentage * 100, 2),
+                "outranking_share": round(row.metrics.auction_insight_search_outranking_share * 100, 2),
+            },
+            conditions=conditions,
+            date_range=date_range,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+            report_name="auction_insights",
+        )
+    except Exception as e:
+        logger.error("Failed to get auction insights: %s", e, exc_info=True)
+        return error_response(f"Failed to get auction insights: {e}")
+
+
+@mcp.tool()
+def landing_page_report(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    campaign_id: Annotated[str | None, "Filter by campaign ID"] = None,
+    date_range: Annotated[str | None, "Predefined range: LAST_7_DAYS, LAST_30_DAYS, etc."] = None,
+    start_date: Annotated[str | None, "Start date YYYY-MM-DD"] = None,
+    end_date: Annotated[str | None, "End date YYYY-MM-DD"] = None,
+    limit: Annotated[int, "Maximum results"] = 50,
+) -> str:
+    """Get performance metrics by landing page URL.
+
+    Shows which landing pages perform best in terms of conversions, bounce rate, and speed.
+    """
+    try:
+        conditions = ["metrics.impressions > 0"]
+        if campaign_id:
+            conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
+
+        return _run_report(
+            customer_id=customer_id,
+            query_template="""
+                SELECT
+                    landing_page_view.unexpanded_final_url,
+                    campaign.id,
+                    campaign.name,
+                    metrics.impressions,
+                    metrics.clicks,
+                    metrics.cost_micros,
+                    metrics.conversions,
+                    metrics.conversions_value,
+                    metrics.ctr,
+                    metrics.average_cpc,
+                    metrics.cost_per_conversion
+                FROM landing_page_view
+                {where}
+                ORDER BY metrics.clicks DESC
+                LIMIT {limit}
+            """,
+            field_extractor=lambda row: {
+                "landing_page_url": row.landing_page_view.unexpanded_final_url,
+                "campaign_id": str(row.campaign.id),
+                "campaign_name": row.campaign.name,
+                "impressions": row.metrics.impressions,
+                "clicks": row.metrics.clicks,
+                "cost": format_micros(row.metrics.cost_micros),
+                "conversions": round(row.metrics.conversions, 2),
+                "conversion_value": round(row.metrics.conversions_value, 2),
+                "ctr": round(row.metrics.ctr * 100, 2),
+                "avg_cpc": format_micros(row.metrics.average_cpc),
+                "cost_per_conversion": format_micros(row.metrics.cost_per_conversion),
+            },
+            conditions=conditions,
+            date_range=date_range,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+            report_name="landing_pages",
+        )
+    except Exception as e:
+        logger.error("Failed to get landing page report: %s", e, exc_info=True)
+        return error_response(f"Failed to get landing page report: {e}")
+
+
+@mcp.tool()
+def asset_performance_report(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    campaign_id: Annotated[str | None, "Filter by campaign ID"] = None,
+    asset_type: Annotated[str | None, "Filter by asset type: HEADLINE, DESCRIPTION, IMAGE, etc."] = None,
+    date_range: Annotated[str | None, "Predefined range: LAST_7_DAYS, LAST_30_DAYS, etc."] = None,
+    start_date: Annotated[str | None, "Start date YYYY-MM-DD"] = None,
+    end_date: Annotated[str | None, "End date YYYY-MM-DD"] = None,
+    limit: Annotated[int, "Maximum results"] = 100,
+) -> str:
+    """Get individual asset performance (headlines, descriptions, images) within ad groups.
+
+    Shows performance_label (BEST, GOOD, LOW) and metrics for each asset.
+    Essential for understanding which headlines/descriptions work best.
+    """
+    try:
+        conditions = ["metrics.impressions > 0"]
+        if campaign_id:
+            conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
+        if asset_type:
+            conditions.append(f"ad_group_ad_asset_view.field_type = '{asset_type}'")
+
+        return _run_report(
+            customer_id=customer_id,
+            query_template="""
+                SELECT
+                    ad_group_ad_asset_view.field_type,
+                    ad_group_ad_asset_view.performance_label,
+                    asset.text_asset.text,
+                    asset.type,
+                    asset.name,
+                    campaign.id,
+                    campaign.name,
+                    ad_group.id,
+                    metrics.impressions,
+                    metrics.clicks,
+                    metrics.cost_micros,
+                    metrics.conversions,
+                    metrics.ctr
+                FROM ad_group_ad_asset_view
+                {where}
+                ORDER BY metrics.impressions DESC
+                LIMIT {limit}
+            """,
+            field_extractor=lambda row: {
+                "field_type": row.ad_group_ad_asset_view.field_type.name,
+                "performance_label": row.ad_group_ad_asset_view.performance_label.name,
+                "text": row.asset.text_asset.text if row.asset.text_asset.text else row.asset.name,
+                "asset_type": row.asset.type_.name,
+                "campaign_id": str(row.campaign.id),
+                "campaign_name": row.campaign.name,
+                "ad_group_id": str(row.ad_group.id),
+                "impressions": row.metrics.impressions,
+                "clicks": row.metrics.clicks,
+                "cost": format_micros(row.metrics.cost_micros),
+                "conversions": round(row.metrics.conversions, 2),
+                "ctr": round(row.metrics.ctr * 100, 2),
+            },
+            conditions=conditions,
+            date_range=date_range,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+            report_name="assets",
+        )
+    except Exception as e:
+        logger.error("Failed to get asset performance: %s", e, exc_info=True)
+        return error_response(f"Failed to get asset performance: {e}")
+
+
+@mcp.tool()
+def shopping_performance_report(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    campaign_id: Annotated[str | None, "Filter by campaign ID"] = None,
+    date_range: Annotated[str | None, "Predefined range: LAST_7_DAYS, LAST_30_DAYS, etc."] = None,
+    start_date: Annotated[str | None, "Start date YYYY-MM-DD"] = None,
+    end_date: Annotated[str | None, "End date YYYY-MM-DD"] = None,
+    limit: Annotated[int, "Maximum results"] = 100,
+) -> str:
+    """Get Shopping campaign performance by product.
+
+    Shows product-level metrics including title, brand, product type, and ROAS.
+    Works with Shopping and Performance Max campaigns.
+    """
+    try:
+        conditions = ["metrics.impressions > 0"]
+        if campaign_id:
+            conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
+
+        return _run_report(
+            customer_id=customer_id,
+            query_template="""
+                SELECT
+                    shopping_performance_view.resource_name,
+                    segments.product_item_id,
+                    segments.product_title,
+                    segments.product_brand,
+                    segments.product_type_l1,
+                    campaign.id,
+                    campaign.name,
+                    metrics.impressions,
+                    metrics.clicks,
+                    metrics.cost_micros,
+                    metrics.conversions,
+                    metrics.conversions_value,
+                    metrics.ctr,
+                    metrics.average_cpc
+                FROM shopping_performance_view
+                {where}
+                ORDER BY metrics.cost_micros DESC
+                LIMIT {limit}
+            """,
+            field_extractor=lambda row: {
+                "product_id": row.segments.product_item_id,
+                "product_title": row.segments.product_title,
+                "product_brand": row.segments.product_brand,
+                "product_type": row.segments.product_type_l1,
+                "campaign_id": str(row.campaign.id),
+                "campaign_name": row.campaign.name,
+                "impressions": row.metrics.impressions,
+                "clicks": row.metrics.clicks,
+                "cost": format_micros(row.metrics.cost_micros),
+                "conversions": round(row.metrics.conversions, 2),
+                "conversion_value": round(row.metrics.conversions_value, 2),
+                "ctr": round(row.metrics.ctr * 100, 2),
+                "avg_cpc": format_micros(row.metrics.average_cpc),
+            },
+            conditions=conditions,
+            date_range=date_range,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+            report_name="products",
+        )
+    except Exception as e:
+        logger.error("Failed to get shopping performance: %s", e, exc_info=True)
+        return error_response(f"Failed to get shopping performance: {e}")
+
+
+@mcp.tool()
+def get_industry_benchmarks(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    campaign_ids: Annotated[list[str] | None, "List of campaign IDs to benchmark (None = all ENABLED)"] = None,
+    date_range: Annotated[str | None, "Predefined range: LAST_7_DAYS, LAST_30_DAYS, etc."] = None,
+    start_date: Annotated[str | None, "Start date YYYY-MM-DD"] = None,
+    end_date: Annotated[str | None, "End date YYYY-MM-DD"] = None,
+) -> str:
+    """Get account performance summary with calculated benchmarks.
+
+    Calculates key metrics (CTR, CPC, CPA, ROAS, conversion rate) per campaign
+    and account-wide averages. Use these to compare campaign performance internally
+    and identify underperformers.
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        service = get_service("GoogleAdsService")
+
+        conditions = ["metrics.impressions > 0", "campaign.status = 'ENABLED'"]
+        if campaign_ids:
+            safe_ids = [validate_numeric_id(cid_val, "campaign_id") for cid_val in campaign_ids]
+            conditions.append(f"campaign.id IN ({', '.join(safe_ids)})")
+
+        where = _build_where(conditions, date_range, start_date, end_date)
+
+        query = f"""
+            SELECT
+                campaign.id,
+                campaign.name,
+                campaign.advertising_channel_type,
+                metrics.impressions,
+                metrics.clicks,
+                metrics.cost_micros,
+                metrics.conversions,
+                metrics.conversions_value,
+                metrics.ctr,
+                metrics.average_cpc,
+                metrics.cost_per_conversion
+            FROM campaign
+            {where}
+            ORDER BY metrics.cost_micros DESC
+        """
+        response = service.search(customer_id=cid, query=query)
+
+        campaigns = []
+        totals = {"impressions": 0, "clicks": 0, "cost_micros": 0, "conversions": 0.0, "conversion_value": 0.0}
+
+        for row in response:
+            cost = row.metrics.cost_micros
+            clicks = row.metrics.clicks
+            conversions = row.metrics.conversions
+            conv_value = row.metrics.conversions_value
+
+            cpa = format_micros(row.metrics.cost_per_conversion) if conversions > 0 else None
+            roas = round(conv_value / format_micros(cost), 2) if cost > 0 and conv_value > 0 else None
+            conv_rate = round(conversions / clicks * 100, 2) if clicks > 0 else 0
+
+            campaigns.append({
+                "campaign_id": str(row.campaign.id),
+                "campaign_name": row.campaign.name,
+                "channel_type": row.campaign.advertising_channel_type.name,
+                "impressions": row.metrics.impressions,
+                "clicks": clicks,
+                "cost": format_micros(cost),
+                "conversions": round(conversions, 2),
+                "conversion_value": round(conv_value, 2),
+                "ctr": round(row.metrics.ctr * 100, 2),
+                "avg_cpc": format_micros(row.metrics.average_cpc),
+                "cpa": cpa,
+                "roas": roas,
+                "conversion_rate": conv_rate,
+            })
+
+            totals["impressions"] += row.metrics.impressions
+            totals["clicks"] += clicks
+            totals["cost_micros"] += cost
+            totals["conversions"] += conversions
+            totals["conversion_value"] += conv_value
+
+        # Calculate account-wide benchmarks
+        t_clicks = totals["clicks"]
+        t_cost = totals["cost_micros"]
+        t_conv = totals["conversions"]
+        t_conv_value = totals["conversion_value"]
+
+        benchmarks = {
+            "avg_ctr": round(t_clicks / totals["impressions"] * 100, 2) if totals["impressions"] > 0 else 0,
+            "avg_cpc": format_micros(int(t_cost / t_clicks)) if t_clicks > 0 else None,
+            "avg_cpa": format_micros(int(t_cost / t_conv)) if t_conv > 0 else None,
+            "avg_roas": round(t_conv_value / format_micros(t_cost), 2) if t_cost > 0 and t_conv_value > 0 else None,
+            "avg_conversion_rate": round(t_conv / t_clicks * 100, 2) if t_clicks > 0 else 0,
+            "total_cost": format_micros(t_cost),
+            "total_conversions": round(t_conv, 2),
+            "total_conversion_value": round(t_conv_value, 2),
+            "campaigns_analyzed": len(campaigns),
+        }
+
+        return success_response({
+            "benchmarks": benchmarks,
+            "campaigns": campaigns,
+        })
+    except Exception as e:
+        logger.error("Failed to get industry benchmarks: %s", e, exc_info=True)
+        return error_response(f"Failed to get industry benchmarks: {e}")

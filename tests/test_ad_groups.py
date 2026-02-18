@@ -612,3 +612,118 @@ class TestRemoveAdGroup:
 
         result = assert_error(remove_ad_group("bad", "222"))
         assert "Failed to remove ad group" in result["error"]
+
+
+class TestCloneAdGroup:
+    @patch("mcp_google_ads.tools.ad_groups.get_service")
+    @patch("mcp_google_ads.tools.ad_groups.get_client")
+    @patch("mcp_google_ads.tools.ad_groups.resolve_customer_id", return_value="123")
+    def test_clones_basic(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.ad_groups import clone_ad_group
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        source_row = MagicMock()
+        source_row.ad_group.name = "Original AG"
+        source_row.ad_group.type_ = MagicMock()
+        source_row.ad_group.cpc_bid_micros = 2_000_000
+        source_row.ad_group.target_cpa_micros = 0
+        source_row.campaign.id = 555
+
+        search_service = MagicMock()
+        # First call: source ad group query; second/third: keyword queries (empty)
+        search_service.search.side_effect = [[source_row], [], []]
+
+        ag_service = MagicMock()
+        ag_response = MagicMock()
+        ag_response.results = [MagicMock(resource_name="customers/123/adGroups/999")]
+        ag_service.mutate_ad_groups.return_value = ag_response
+
+        mock_get_service.side_effect = lambda name: {
+            "GoogleAdsService": search_service,
+            "AdGroupService": ag_service,
+            "AdGroupCriterionService": MagicMock(),
+        }[name]
+
+        result = assert_success(clone_ad_group("123", "444", copy_keywords=False, copy_negative_keywords=False))
+        assert result["data"]["new_ad_group_id"] == "999"
+        assert result["data"]["status"] == "PAUSED"
+
+    @patch("mcp_google_ads.tools.ad_groups.get_service")
+    @patch("mcp_google_ads.tools.ad_groups.get_client")
+    @patch("mcp_google_ads.tools.ad_groups.resolve_customer_id", return_value="123")
+    def test_clones_with_keywords(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.ad_groups import clone_ad_group
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        source_row = MagicMock()
+        source_row.ad_group.name = "Original AG"
+        source_row.ad_group.type_ = MagicMock()
+        source_row.ad_group.cpc_bid_micros = 2_000_000
+        source_row.campaign.id = 555
+
+        kw_row1 = MagicMock()
+        kw_row1.ad_group_criterion.keyword.text = "tarot online"
+        kw_row1.ad_group_criterion.keyword.match_type = MagicMock()
+        kw_row1.ad_group_criterion.cpc_bid_micros = 1_000_000
+        kw_row1.ad_group_criterion.negative = False
+
+        kw_row2 = MagicMock()
+        kw_row2.ad_group_criterion.keyword.text = "consulta tarot"
+        kw_row2.ad_group_criterion.keyword.match_type = MagicMock()
+        kw_row2.ad_group_criterion.cpc_bid_micros = 0
+        kw_row2.ad_group_criterion.negative = False
+
+        search_service = MagicMock()
+        search_service.search.side_effect = [[source_row], [kw_row1, kw_row2], []]
+
+        ag_service = MagicMock()
+        ag_response = MagicMock()
+        ag_response.results = [MagicMock(resource_name="customers/123/adGroups/999")]
+        ag_service.mutate_ad_groups.return_value = ag_response
+
+        kw_service = MagicMock()
+        kw_mutate_response = MagicMock()
+        kw_mutate_response.results = [MagicMock(), MagicMock()]
+        kw_service.mutate_ad_group_criteria.return_value = kw_mutate_response
+
+        mock_get_service.side_effect = lambda name: {
+            "GoogleAdsService": search_service,
+            "AdGroupService": ag_service,
+            "AdGroupCriterionService": kw_service,
+        }[name]
+
+        result = assert_success(clone_ad_group("123", "444"))
+        assert result["data"]["copied_keywords"] == 2
+
+    @patch("mcp_google_ads.tools.ad_groups.get_service")
+    @patch("mcp_google_ads.tools.ad_groups.get_client")
+    @patch("mcp_google_ads.tools.ad_groups.resolve_customer_id", return_value="123")
+    def test_source_not_found(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.ad_groups import clone_ad_group
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        search_service = MagicMock()
+        search_service.search.return_value = []
+        mock_get_service.return_value = search_service
+
+        result = assert_error(clone_ad_group("123", "999"))
+        assert "not found" in result["error"]
+
+    def test_invalid_ad_group_id(self):
+        from mcp_google_ads.tools.ad_groups import clone_ad_group
+
+        result = assert_error(clone_ad_group("123", "abc"))
+        assert "inválido" in result["error"]
+
+    @patch("mcp_google_ads.tools.ad_groups.resolve_customer_id", side_effect=Exception("No ID"))
+    def test_error_handling(self, mock_resolve):
+        from mcp_google_ads.tools.ad_groups import clone_ad_group
+
+        result = assert_error(clone_ad_group("", "111"))
+        assert "Failed to clone ad group" in result["error"]

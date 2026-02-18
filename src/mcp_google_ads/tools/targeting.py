@@ -1,4 +1,4 @@
-"""Advanced targeting management tools (11 tools)."""
+"""Advanced targeting management tools (13 tools)."""
 
 from __future__ import annotations
 
@@ -425,3 +425,95 @@ def set_demographic_bid_adjustments(
     except Exception as e:
         logger.error("Failed to set demographic bid adjustments: %s", e, exc_info=True)
         return error_response(f"Failed to set demographic bid adjustments: {e}")
+
+
+@mcp.tool()
+def add_proximity_targeting(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    campaign_id: Annotated[str, "The campaign ID"],
+    latitude: Annotated[float, "Latitude in micro degrees (e.g., -23550520 for São Paulo) or decimal degrees (e.g., -23.550520)"],
+    longitude: Annotated[float, "Longitude in micro degrees (e.g., -46633309 for São Paulo) or decimal degrees (e.g., -46.633309)"],
+    radius: Annotated[float, "Radius value for the proximity area"],
+    radius_units: Annotated[str, "Radius units: MILES or KILOMETERS"] = "KILOMETERS",
+    bid_modifier: Annotated[float | None, "Optional bid modifier (1.0 = no change, 1.2 = +20%)"] = None,
+) -> str:
+    """Add proximity (radius) targeting to a campaign around a lat/lng point.
+
+    Target users within a radius of a geographic point. Useful for local businesses.
+    Latitude/longitude can be in micro degrees (e.g., -23550520) or decimal degrees (e.g., -23.5505).
+    Values between -90 and 90 for latitude (or -180 and 180 for longitude) are treated as decimal
+    degrees and automatically converted to micro degrees.
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        safe_campaign = validate_numeric_id(campaign_id, "campaign_id")
+        validate_enum_value(radius_units, "radius_units")
+        client = get_client()
+        service = get_service("CampaignCriterionService")
+
+        # Auto-detect and convert decimal degrees to micro degrees
+        lat_micro = int(latitude * 1_000_000) if -90 <= latitude <= 90 else int(latitude)
+        lng_micro = int(longitude * 1_000_000) if -180 <= longitude <= 180 else int(longitude)
+
+        operation = client.get_type("CampaignCriterionOperation")
+        criterion = operation.create
+        criterion.campaign = f"customers/{cid}/campaigns/{safe_campaign}"
+        criterion.proximity.geo_point.latitude_in_micro_degrees = lat_micro
+        criterion.proximity.geo_point.longitude_in_micro_degrees = lng_micro
+        criterion.proximity.radius = radius
+        criterion.proximity.radius_units = getattr(
+            client.enums.ProximityRadiusUnitsEnum, radius_units
+        )
+
+        if bid_modifier is not None:
+            criterion.bid_modifier = bid_modifier
+
+        response = service.mutate_campaign_criteria(customer_id=cid, operations=[operation])
+        return success_response(
+            {"resource_name": response.results[0].resource_name},
+            message=f"Proximity targeting added: {radius} {radius_units} around ({lat_micro}, {lng_micro})",
+        )
+    except Exception as e:
+        logger.error("Failed to add proximity targeting: %s", e, exc_info=True)
+        return error_response(f"Failed to add proximity targeting: {e}")
+
+
+@mcp.tool()
+def list_proximity_targeting(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    campaign_id: Annotated[str, "The campaign ID"],
+) -> str:
+    """List all proximity (radius) targeting criteria for a campaign."""
+    try:
+        cid = resolve_customer_id(customer_id)
+        service = get_service("GoogleAdsService")
+
+        query = f"""
+            SELECT
+                campaign_criterion.criterion_id,
+                campaign_criterion.proximity.geo_point.latitude_in_micro_degrees,
+                campaign_criterion.proximity.geo_point.longitude_in_micro_degrees,
+                campaign_criterion.proximity.radius,
+                campaign_criterion.proximity.radius_units,
+                campaign_criterion.proximity.address.city_name,
+                campaign_criterion.bid_modifier
+            FROM campaign_criterion
+            WHERE campaign.id = {validate_numeric_id(campaign_id, "campaign_id")}
+                AND campaign_criterion.type = 'PROXIMITY'
+        """
+        response = service.search(customer_id=cid, query=query)
+        proximities = []
+        for row in response:
+            proximities.append({
+                "criterion_id": str(row.campaign_criterion.criterion_id),
+                "latitude_micro": row.campaign_criterion.proximity.geo_point.latitude_in_micro_degrees,
+                "longitude_micro": row.campaign_criterion.proximity.geo_point.longitude_in_micro_degrees,
+                "radius": row.campaign_criterion.proximity.radius,
+                "radius_units": row.campaign_criterion.proximity.radius_units.name,
+                "city": row.campaign_criterion.proximity.address.city_name,
+                "bid_modifier": row.campaign_criterion.bid_modifier,
+            })
+        return success_response({"proximities": proximities, "count": len(proximities)})
+    except Exception as e:
+        logger.error("Failed to list proximity targeting: %s", e, exc_info=True)
+        return error_response(f"Failed to list proximity targeting: {e}")
