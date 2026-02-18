@@ -128,7 +128,7 @@ def create_ad_group(
     customer_id: Annotated[str, "The Google Ads customer ID"],
     campaign_id: Annotated[str, "The campaign ID to create the ad group in"],
     name: Annotated[str, "Ad group name"],
-    cpc_bid: Annotated[float | None, "CPC bid in account currency"] = None,
+    cpc_bid: Annotated[float | None, "CPC bid in account currency (e.g., 10.0 for R$10.00). NOT in micros."] = None,
     ad_group_type: Annotated[str, "Type: SEARCH_STANDARD, DISPLAY_STANDARD, SHOPPING_PRODUCT_ADS"] = "SEARCH_STANDARD",
 ) -> str:
     """Create a new ad group within a campaign. Created PAUSED by default."""
@@ -146,6 +146,11 @@ def create_ad_group(
         ad_group.type_ = getattr(client.enums.AdGroupTypeEnum, ad_group_type)
 
         if cpc_bid is not None:
+            if cpc_bid < 0.10:
+                return error_response(
+                    f"CPC bid R${cpc_bid:.2f} is suspiciously low (< R$0.10). "
+                    f"Pass the value in currency, not micros (e.g., 10.0 for R$10.00)."
+                )
             ad_group.cpc_bid_micros = to_micros(cpc_bid)
 
         response = service.mutate_ad_groups(customer_id=cid, operations=[operation])

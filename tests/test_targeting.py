@@ -216,6 +216,8 @@ def _mock_ag_criterion_service(mock_client, mock_get_service):
     mock_response = MagicMock()
     mock_response.results = [MagicMock(resource_name="customers/123/adGroupCriteria/456~789")]
     mock_service.mutate_ad_group_criteria.return_value = mock_response
+    # _find_demographic_criterion queries existing criteria — return empty (CREATE path)
+    mock_service.search.return_value = []
     mock_get_service.return_value = mock_service
     return mock_service
 
@@ -301,13 +303,14 @@ class TestSetDemographicBidAdjustments:
     @patch("mcp_google_ads.tools.targeting.get_service")
     @patch("mcp_google_ads.tools.targeting.get_client")
     @patch("mcp_google_ads.tools.targeting.resolve_customer_id", return_value="123")
-    def test_sets_multiple_demographics(self, mock_resolve, mock_client, mock_get_service):
+    def test_creates_new_demographics(self, mock_resolve, mock_client, mock_get_service):
         from mcp_google_ads.tools.targeting import set_demographic_bid_adjustments
 
         mock_service = MagicMock()
         mock_response = MagicMock()
         mock_response.results = [MagicMock(), MagicMock(), MagicMock()]
         mock_service.mutate_ad_group_criteria.return_value = mock_response
+        mock_service.search.return_value = []  # No existing criteria → CREATE path
         mock_get_service.return_value = mock_service
 
         adjustments = [
@@ -321,8 +324,41 @@ class TestSetDemographicBidAdjustments:
     @patch("mcp_google_ads.tools.targeting.get_service")
     @patch("mcp_google_ads.tools.targeting.get_client")
     @patch("mcp_google_ads.tools.targeting.resolve_customer_id", return_value="123")
+    def test_updates_existing_demographics(self, mock_resolve, mock_client, mock_get_service):
+        """Test UPDATE path for existing system-created criteria (fixes bid_modifier < 1.0)."""
+        from mcp_google_ads.tools.targeting import set_demographic_bid_adjustments
+
+        # Mock existing criteria from search
+        mock_existing_row = MagicMock()
+        mock_existing_row.ad_group_criterion.criterion_id = 503001
+        mock_existing_row.ad_group_criterion.type_.name = "AGE_RANGE"
+        mock_existing_row.ad_group_criterion.age_range.type_.name = "AGE_RANGE_18_24"
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = [mock_existing_row]
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock()]
+        mock_service.mutate_ad_group_criteria.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        adjustments = [{"type": "age", "value": "AGE_RANGE_18_24", "bid_modifier": 0.7}]
+        result = assert_success(set_demographic_bid_adjustments("123", "456", adjustments))
+        assert result["data"]["applied"] == 1
+
+        # Verificar que usou UPDATE (operation.update, não operation.create)
+        call_args = mock_service.mutate_ad_group_criteria.call_args
+        operations = call_args.kwargs["operations"]
+        assert len(operations) == 1
+
+    @patch("mcp_google_ads.tools.targeting.get_service")
+    @patch("mcp_google_ads.tools.targeting.get_client")
+    @patch("mcp_google_ads.tools.targeting.resolve_customer_id", return_value="123")
     def test_rejects_invalid_type(self, mock_resolve, mock_client, mock_get_service):
         from mcp_google_ads.tools.targeting import set_demographic_bid_adjustments
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = []
+        mock_get_service.return_value = mock_service
 
         adjustments = [{"type": "invalid", "value": "SOMETHING", "bid_modifier": 1.0}]
         result = assert_error(set_demographic_bid_adjustments("123", "456", adjustments))

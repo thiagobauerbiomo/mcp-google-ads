@@ -105,7 +105,16 @@ def batch_set_status(
         service = get_service("GoogleAdsService")
         response = service.mutate(customer_id=cid, mutate_operations=mutate_operations)
 
-        results = [r.resource_name for r in response.mutate_operation_responses]
+        # Extrair resource_name do campo correto (cada tipo tem seu próprio result field)
+        _result_field = {
+            "campaign": "campaign_result",
+            "ad_group": "ad_group_result",
+            "ad": "ad_group_ad_result",
+        }
+        results = []
+        for i, r in enumerate(response.mutate_operation_responses):
+            field = _result_field[resources[i]["type"]]
+            results.append(getattr(r, field).resource_name)
         return success_response(
             {"successful_operations": len(results), "results": results},
             message=f"{len(results)} resources set to {upper_status}",

@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
+from google.api_core import protobuf_helpers
+
 from ..auth import get_client, get_service
 from ..coordinator import mcp
 from ..utils import error_response, resolve_customer_id, success_response, validate_enum_value, validate_numeric_id
@@ -273,6 +275,57 @@ def remove_language_targeting(
         return error_response(f"Failed to remove language targeting: {e}")
 
 
+def _find_demographic_criterion(cid, ad_group_id, criterion_type, field_name, value):
+    """Find an existing demographic criterion ID by type and value.
+
+    Google Ads auto-creates demographic criteria when an ad group is created.
+    We need the criterion_id to UPDATE (not CREATE) to properly set bid_modifier.
+    """
+    search_service = get_service("GoogleAdsService")
+    query = f"""
+        SELECT ad_group_criterion.criterion_id
+        FROM ad_group_criterion
+        WHERE ad_group.id = {ad_group_id}
+            AND ad_group_criterion.type = '{criterion_type}'
+            AND ad_group_criterion.{field_name}.type = '{value}'
+    """
+    response = search_service.search(customer_id=cid, query=query)
+    for row in response:
+        return str(row.ad_group_criterion.criterion_id)
+    return None
+
+
+def _upsert_demographic_criterion(cid, safe_ag, field_name, attr_name, enum_name, value, bid_modifier):
+    """Create or update a demographic criterion with bid_modifier.
+
+    Uses UPDATE if the criterion already exists (system-created), CREATE otherwise.
+    This fixes the bug where CREATE on existing system criteria ignores bid_modifier < 1.0.
+    """
+    client = get_client()
+    criterion_type_map = {"age_range": "AGE_RANGE", "gender": "GENDER", "income_range": "INCOME_RANGE"}
+    criterion_type = criterion_type_map[field_name]
+
+    criterion_id = _find_demographic_criterion(cid, safe_ag, criterion_type, field_name, value)
+    operation = client.get_type("AdGroupCriterionOperation")
+
+    if criterion_id:
+        criterion = operation.update
+        criterion.resource_name = f"customers/{cid}/adGroupCriteria/{safe_ag}~{criterion_id}"
+        criterion.bid_modifier = bid_modifier
+        client.copy_from(
+            operation.update_mask,
+            protobuf_helpers.field_mask_pb2.FieldMask(paths=["bid_modifier"]),
+        )
+    else:
+        criterion = operation.create
+        criterion.ad_group = f"customers/{cid}/adGroups/{safe_ag}"
+        criterion_field = getattr(criterion, field_name)
+        setattr(criterion_field, attr_name, getattr(getattr(client.enums, enum_name), value))
+        criterion.bid_modifier = bid_modifier
+
+    return operation
+
+
 @mcp.tool()
 def set_age_bid_adjustment(
     customer_id: Annotated[str, "The Google Ads customer ID"],
@@ -288,15 +341,9 @@ def set_age_bid_adjustment(
         cid = resolve_customer_id(customer_id)
         safe_ag = validate_numeric_id(ad_group_id, "ad_group_id")
         validate_enum_value(age_range, "age_range")
-        client = get_client()
         service = get_service("AdGroupCriterionService")
 
-        operation = client.get_type("AdGroupCriterionOperation")
-        criterion = operation.create
-        criterion.ad_group = f"customers/{cid}/adGroups/{safe_ag}"
-        criterion.age_range.type_ = getattr(client.enums.AgeRangeTypeEnum, age_range)
-        criterion.bid_modifier = bid_modifier
-
+        operation = _upsert_demographic_criterion(cid, safe_ag, "age_range", "type_", "AgeRangeTypeEnum", age_range, bid_modifier)
         response = service.mutate_ad_group_criteria(customer_id=cid, operations=[operation])
         return success_response(
             {"resource_name": response.results[0].resource_name},
@@ -322,15 +369,9 @@ def set_gender_bid_adjustment(
         cid = resolve_customer_id(customer_id)
         safe_ag = validate_numeric_id(ad_group_id, "ad_group_id")
         validate_enum_value(gender, "gender")
-        client = get_client()
         service = get_service("AdGroupCriterionService")
 
-        operation = client.get_type("AdGroupCriterionOperation")
-        criterion = operation.create
-        criterion.ad_group = f"customers/{cid}/adGroups/{safe_ag}"
-        criterion.gender.type_ = getattr(client.enums.GenderTypeEnum, gender)
-        criterion.bid_modifier = bid_modifier
-
+        operation = _upsert_demographic_criterion(cid, safe_ag, "gender", "type_", "GenderTypeEnum", gender, bid_modifier)
         response = service.mutate_ad_group_criteria(customer_id=cid, operations=[operation])
         return success_response(
             {"resource_name": response.results[0].resource_name},
@@ -357,15 +398,9 @@ def set_income_bid_adjustment(
         cid = resolve_customer_id(customer_id)
         safe_ag = validate_numeric_id(ad_group_id, "ad_group_id")
         validate_enum_value(income_range, "income_range")
-        client = get_client()
         service = get_service("AdGroupCriterionService")
 
-        operation = client.get_type("AdGroupCriterionOperation")
-        criterion = operation.create
-        criterion.ad_group = f"customers/{cid}/adGroups/{safe_ag}"
-        criterion.income_range.type_ = getattr(client.enums.IncomeRangeTypeEnum, income_range)
-        criterion.bid_modifier = bid_modifier
-
+        operation = _upsert_demographic_criterion(cid, safe_ag, "income_range", "type_", "IncomeRangeTypeEnum", income_range, bid_modifier)
         response = service.mutate_ad_group_criteria(customer_id=cid, operations=[operation])
         return success_response(
             {"resource_name": response.results[0].resource_name},
@@ -384,6 +419,7 @@ def set_demographic_bid_adjustments(
 ) -> str:
     """Set multiple demographic bid adjustments for an ad group in a single call.
 
+    Uses UPDATE for existing system-created criteria (fixes bid_modifier < 1.0 not being saved).
     Example: [{"type": "age", "value": "AGE_RANGE_25_34", "bid_modifier": 1.2},
               {"type": "income", "value": "INCOME_RANGE_90_UP", "bid_modifier": 1.3}]
     """
@@ -392,13 +428,42 @@ def set_demographic_bid_adjustments(
         safe_ag = validate_numeric_id(ad_group_id, "ad_group_id")
         client = get_client()
         service = get_service("AdGroupCriterionService")
+        search_service = get_service("GoogleAdsService")
 
         enum_map = {
             "age": ("age_range", "type_", "AgeRangeTypeEnum"),
             "gender": ("gender", "type_", "GenderTypeEnum"),
             "income": ("income_range", "type_", "IncomeRangeTypeEnum"),
         }
+        # Query existing demographic criteria to get criterion_ids
+        query = f"""
+            SELECT
+                ad_group_criterion.criterion_id,
+                ad_group_criterion.type,
+                ad_group_criterion.age_range.type,
+                ad_group_criterion.gender.type,
+                ad_group_criterion.income_range.type
+            FROM ad_group_criterion
+            WHERE ad_group.id = {safe_ag}
+                AND ad_group_criterion.type IN ('AGE_RANGE', 'GENDER', 'INCOME_RANGE')
+        """
+        search_response = search_service.search(customer_id=cid, query=query)
 
+        # Map (type, value) → criterion_id
+        existing = {}
+        _type_value_extractors = {
+            "AGE_RANGE": lambda c: ("age", c.age_range.type_.name),
+            "GENDER": lambda c: ("gender", c.gender.type_.name),
+            "INCOME_RANGE": lambda c: ("income", c.income_range.type_.name),
+        }
+        for row in search_response:
+            crit = row.ad_group_criterion
+            type_name = crit.type_.name
+            if type_name in _type_value_extractors:
+                key = _type_value_extractors[type_name](crit)
+                existing[key] = str(crit.criterion_id)
+
+        # Build operations: UPDATE for existing, CREATE for new
         operations = []
         for adj in adjustments:
             demo_type = adj.get("type", "")
@@ -408,13 +473,28 @@ def set_demographic_bid_adjustments(
             field_name, attr_name, enum_name = enum_map[demo_type]
             value = adj.get("value", "")
             validate_enum_value(value, f"{demo_type}_value")
+            bid_mod = adj.get("bid_modifier", 1.0)
 
+            criterion_id = existing.get((demo_type, value))
             operation = client.get_type("AdGroupCriterionOperation")
-            criterion = operation.create
-            criterion.ad_group = f"customers/{cid}/adGroups/{safe_ag}"
-            criterion_field = getattr(criterion, field_name)
-            setattr(criterion_field, attr_name, getattr(getattr(client.enums, enum_name), value))
-            criterion.bid_modifier = adj.get("bid_modifier", 1.0)
+
+            if criterion_id:
+                # UPDATE existing criterion (fixes bid_modifier < 1.0 not saving on system criteria)
+                criterion = operation.update
+                criterion.resource_name = f"customers/{cid}/adGroupCriteria/{safe_ag}~{criterion_id}"
+                criterion.bid_modifier = bid_mod
+                client.copy_from(
+                    operation.update_mask,
+                    protobuf_helpers.field_mask_pb2.FieldMask(paths=["bid_modifier"]),
+                )
+            else:
+                # CREATE new criterion
+                criterion = operation.create
+                criterion.ad_group = f"customers/{cid}/adGroups/{safe_ag}"
+                criterion_field = getattr(criterion, field_name)
+                setattr(criterion_field, attr_name, getattr(getattr(client.enums, enum_name), value))
+                criterion.bid_modifier = bid_mod
+
             operations.append(operation)
 
         response = service.mutate_ad_group_criteria(customer_id=cid, operations=operations)

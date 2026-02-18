@@ -7,13 +7,21 @@ from unittest.mock import MagicMock, patch
 from tests.conftest import assert_error, assert_success
 
 
-def _mock_mutate_response(count=1):
-    """Create a mock mutate response with N results."""
+def _mock_mutate_response(resource_types):
+    """Create a mock mutate response with typed results.
+
+    Args:
+        resource_types: list of "campaign" | "ad_group" | "ad"
+    """
+    _field_map = {"campaign": "campaign_result", "ad_group": "ad_group_result", "ad": "ad_group_ad_result"}
     mock_response = MagicMock()
     results = []
-    for i in range(count):
-        result = MagicMock()
-        result.resource_name = f"customers/123/resource/{i}"
+    for i, rt in enumerate(resource_types):
+        result = MagicMock(spec=[])  # spec=[] evita auto-create de atributos
+        field = _field_map[rt]
+        sub_result = MagicMock()
+        sub_result.resource_name = f"customers/123/{rt}s/{i}"
+        setattr(result, field, sub_result)
         results.append(result)
     mock_response.mutate_operation_responses = results
     return mock_response
@@ -27,7 +35,7 @@ class TestBatchSetStatus:
         from mcp_google_ads.tools.batch import batch_set_status
 
         mock_service = MagicMock()
-        mock_service.mutate.return_value = _mock_mutate_response(2)
+        mock_service.mutate.return_value = _mock_mutate_response(["campaign", "campaign"])
         mock_get_service.return_value = mock_service
 
         resources = [
@@ -46,7 +54,7 @@ class TestBatchSetStatus:
         from mcp_google_ads.tools.batch import batch_set_status
 
         mock_service = MagicMock()
-        mock_service.mutate.return_value = _mock_mutate_response(3)
+        mock_service.mutate.return_value = _mock_mutate_response(["campaign", "ad_group", "ad"])
         mock_get_service.return_value = mock_service
 
         resources = [
