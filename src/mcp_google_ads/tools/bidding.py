@@ -136,8 +136,7 @@ def create_bidding_strategy(
             else:
                 strategy.maximize_clicks.cpc_bid_ceiling_micros = 0
         elif strategy_type == "MAXIMIZE_CONVERSIONS":
-            if target_cpa_micros:
-                strategy.maximize_conversions.target_cpa_micros = target_cpa_micros
+            strategy.maximize_conversions.target_cpa_micros = target_cpa_micros or 0
         elif strategy_type == "TARGET_CPA":
             strategy.target_cpa.target_cpa_micros = target_cpa_micros or 0
         elif strategy_type == "TARGET_ROAS":

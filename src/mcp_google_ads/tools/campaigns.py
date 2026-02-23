@@ -185,21 +185,9 @@ def create_campaign(
         if bidding_strategy == "MANUAL_CPC":
             campaign.manual_cpc.enhanced_cpc_enabled = False
         elif bidding_strategy in ("MAXIMIZE_CLICKS", "TARGET_SPEND"):
-            if cpc_bid_ceiling_micros:
-                campaign.target_spend.cpc_bid_ceiling_micros = cpc_bid_ceiling_micros
-            else:
-                client.copy_from(
-                    campaign.target_spend,
-                    client.get_type("TargetSpend")(),
-                )
+            campaign.target_spend.cpc_bid_ceiling_micros = cpc_bid_ceiling_micros or 0
         elif bidding_strategy == "MAXIMIZE_CONVERSIONS":
-            if target_cpa_micros:
-                campaign.maximize_conversions.target_cpa_micros = target_cpa_micros
-            else:
-                client.copy_from(
-                    campaign.maximize_conversions,
-                    client.get_type("MaximizeConversions")(),
-                )
+            campaign.maximize_conversions.target_cpa_micros = target_cpa_micros or 0
         elif bidding_strategy == "TARGET_CPA":
             campaign.target_cpa.target_cpa_micros = target_cpa_micros or 0
         elif bidding_strategy == "TARGET_ROAS":
@@ -235,6 +223,7 @@ def update_campaign(
     network_search: Annotated[bool | None, "Target Google Search"] = None,
     network_search_partners: Annotated[bool | None, "Target Search Partners"] = None,
     network_display: Annotated[bool | None, "Target Display Network"] = None,
+    geo_target_type: Annotated[str | None, "Positive geo target type: PRESENCE or PRESENCE_OR_INTEREST"] = None,
 ) -> str:
     """Update an existing campaign's settings (name, dates, networks)."""
     try:
@@ -266,6 +255,12 @@ def update_campaign(
         if network_display is not None:
             campaign.network_settings.target_content_network = network_display
             update_mask_fields.append("network_settings.target_content_network")
+        if geo_target_type is not None:
+            validate_enum_value(geo_target_type, "geo_target_type")
+            campaign.geo_target_type_setting.positive_geo_target_type = getattr(
+                client.enums.PositiveGeoTargetTypeEnum, geo_target_type
+            )
+            update_mask_fields.append("geo_target_type_setting.positive_geo_target_type")
 
         if not update_mask_fields:
             return error_response("No fields to update")
@@ -512,9 +507,9 @@ def clone_campaign(
         if bst == "MANUAL_CPC":
             new_campaign.manual_cpc.enhanced_cpc_enabled = False
         elif bst in ("MAXIMIZE_CLICKS", "TARGET_SPEND"):
-            client.copy_from(new_campaign.target_spend, client.get_type("TargetSpend")())
+            new_campaign.target_spend.cpc_bid_ceiling_micros = 0
         elif bst == "MAXIMIZE_CONVERSIONS":
-            client.copy_from(new_campaign.maximize_conversions, client.get_type("MaximizeConversions")())
+            new_campaign.maximize_conversions.target_cpa_micros = 0
 
         campaign_response = campaign_service.mutate_campaigns(customer_id=cid, operations=[campaign_op])
         new_campaign_rn = campaign_response.results[0].resource_name

@@ -91,6 +91,7 @@ def add_keywords(
     ad_group_id: Annotated[str, "The ad group ID"],
     keywords: Annotated[list[dict], "List of {text, match_type} where match_type is EXACT, PHRASE, or BROAD"],
     cpc_bid: Annotated[float | None, "CPC bid for all keywords in account currency"] = None,
+    exempt_policy_violations: Annotated[bool, "Auto-exempt policy violations (e.g. LEGAL_REQUIREMENTS for restricted niches)"] = False,
 ) -> str:
     """Add keywords to an ad group. Keywords are added as ENABLED.
 
@@ -130,13 +131,68 @@ def add_keywords(
                 criterion.cpc_bid_micros = to_micros(cpc_bid)
             operations.append(operation)
 
-        response = service.mutate_ad_group_criteria(customer_id=cid, operations=operations)
-        results = [r.resource_name for r in response.results]
-        result_data = {"added": len(results), "resource_names": results}
-        return success_response(
-            result_data,
-            message=f"{len(results)} keywords added to ad group {ad_group_id}",
-        )
+        if not exempt_policy_violations:
+            response = service.mutate_ad_group_criteria(customer_id=cid, operations=operations)
+            results = [r.resource_name for r in response.results]
+            result_data = {"added": len(results), "resource_names": results}
+            return success_response(
+                result_data,
+                message=f"{len(results)} keywords added to ad group {ad_group_id}",
+            )
+
+        # With policy exemption: try first, collect violations, retry with exemption keys
+        from google.ads.googleads.errors import GoogleAdsException
+
+        try:
+            response = service.mutate_ad_group_criteria(customer_id=cid, operations=operations)
+            results = [r.resource_name for r in response.results]
+            result_data = {"added": len(results), "resource_names": results}
+            return success_response(
+                result_data,
+                message=f"{len(results)} keywords added to ad group {ad_group_id}",
+            )
+        except GoogleAdsException as ex:
+            failure = ex.failure
+            if not failure:
+                raise
+
+            # Rebuild operations with exemption keys
+            exempted_operations = []
+            for i, kw in enumerate(unique_keywords):
+                operation = client.get_type("AdGroupCriterionOperation")
+                criterion = operation.create
+                criterion.ad_group = f"customers/{cid}/adGroups/{ad_group_id}"
+                criterion.status = client.enums.AdGroupCriterionStatusEnum.ENABLED
+                criterion.keyword.text = kw["text"]
+                match_val = kw.get("match_type", "BROAD")
+                criterion.keyword.match_type = getattr(
+                    client.enums.KeywordMatchTypeEnum, match_val
+                )
+                if cpc_bid is not None:
+                    criterion.cpc_bid_micros = to_micros(cpc_bid)
+
+                # Add exemption keys for this operation's policy violations
+                if failure:
+                    for error in failure.errors:
+                        op_index = -1
+                        for path_element in error.location.field_path_elements:
+                            if path_element.field_name == "operations":
+                                op_index = path_element.index
+                                break
+                        if op_index == i and error.details.policy_violation_details.key.policy_name:
+                            operation.exempt_policy_violation_keys.append(
+                                error.details.policy_violation_details.key
+                            )
+
+                exempted_operations.append(operation)
+
+            response = service.mutate_ad_group_criteria(customer_id=cid, operations=exempted_operations)
+            results = [r.resource_name for r in response.results]
+            result_data = {"added": len(results), "resource_names": results, "policy_exempted": True}
+            return success_response(
+                result_data,
+                message=f"{len(results)} keywords added (policy exempted) to ad group {ad_group_id}",
+            )
     except Exception as e:
         logger.error("Failed to add keywords: %s", e, exc_info=True)
         return error_response(f"Failed to add keywords: {e}")
