@@ -52,7 +52,8 @@ def get_customer_info(
                 customer.status,
                 customer.manager,
                 customer.test_account,
-                customer.auto_tagging_enabled
+                customer.auto_tagging_enabled,
+                customer.contains_eu_political_advertising
             FROM customer
             LIMIT 1
         """
@@ -67,6 +68,7 @@ def get_customer_info(
                 "is_manager": row.customer.manager,
                 "is_test_account": row.customer.test_account,
                 "auto_tagging": row.customer.auto_tagging_enabled,
+                "contains_eu_political_advertising": row.customer.contains_eu_political_advertising.name,
             }
             return success_response(data)
         return error_response("No customer data found")

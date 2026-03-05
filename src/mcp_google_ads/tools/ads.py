@@ -253,17 +253,18 @@ def update_ad(
     """
     try:
         cid = resolve_customer_id(customer_id)
+        safe_ag = validate_numeric_id(ad_group_id, "ad_group_id")
+        safe_ad = validate_numeric_id(ad_id, "ad_id")
         client = get_client()
         service = get_service("AdGroupAdService")
 
         operation = client.get_type("AdGroupAdOperation")
         ad_group_ad = operation.update
-        ad_group_ad.ad_group = f"customers/{cid}/adGroups/{ad_group_id}"
-        ad_group_ad.ad.resource_name = f"customers/{cid}/ads/{ad_id}"
+        ad_group_ad.resource_name = f"customers/{cid}/adGroupAds/{safe_ag}~{safe_ad}"
 
         fields = []
         if final_url is not None:
-            ad_group_ad.ad.final_urls.append(final_url)
+            ad_group_ad.ad.final_urls[:] = [final_url]
             fields.append("ad.final_urls")
         if path1 is not None:
             ad_group_ad.ad.responsive_search_ad.path1 = path1

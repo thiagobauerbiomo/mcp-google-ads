@@ -60,6 +60,7 @@ class TestGetCustomerInfo:
         mock_row.customer.manager = False
         mock_row.customer.test_account = True
         mock_row.customer.auto_tagging_enabled = False
+        mock_row.customer.contains_eu_political_advertising.name = "UNSPECIFIED"
 
         mock_service = MagicMock()
         mock_service.search.return_value = [mock_row]
@@ -75,6 +76,7 @@ class TestGetCustomerInfo:
         assert data["is_manager"] is False
         assert data["is_test_account"] is True
         assert data["auto_tagging"] is False
+        assert data["contains_eu_political_advertising"] == "UNSPECIFIED"
 
     @patch("mcp_google_ads.tools.accounts.get_service")
     @patch("mcp_google_ads.tools.accounts.resolve_customer_id", return_value="123")

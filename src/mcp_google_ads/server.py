@@ -27,6 +27,7 @@ from .tools import (  # noqa: F401
     diagnostics,
     experiments,
     extensions,
+    incentives,
     keywords,
     labels,
     recommendations,
@@ -34,6 +35,7 @@ from .tools import (  # noqa: F401
     search,
     shared_sets,
     targeting,
+    youtube_uploads,
 )
 
 

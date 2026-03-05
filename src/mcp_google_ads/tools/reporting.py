@@ -1,4 +1,4 @@
-"""Reporting tools (21 tools)."""
+"""Reporting tools (24 tools)."""
 
 from __future__ import annotations
 
@@ -1040,6 +1040,7 @@ def pmax_network_breakdown_report(
             query_template="""
                 SELECT
                     segments.ad_network_type,
+                    segments.ad_sub_network_type,
                     campaign.id,
                     campaign.name,
                     metrics.impressions,
@@ -1048,7 +1049,10 @@ def pmax_network_breakdown_report(
                     metrics.conversions,
                     metrics.conversions_value,
                     metrics.ctr,
-                    metrics.average_cpc
+                    metrics.average_cpc,
+                    metrics.video_views,
+                    metrics.engagements,
+                    metrics.engagement_rate
                 FROM campaign
                 {where}
                 ORDER BY metrics.cost_micros DESC
@@ -1056,6 +1060,7 @@ def pmax_network_breakdown_report(
             """,
             field_extractor=lambda row: {
                 "network": row.segments.ad_network_type.name,
+                "sub_network": row.segments.ad_sub_network_type.name,
                 "campaign_id": str(row.campaign.id),
                 "campaign_name": row.campaign.name,
                 "impressions": row.metrics.impressions,
@@ -1065,6 +1070,9 @@ def pmax_network_breakdown_report(
                 "conversion_value": round(row.metrics.conversions_value, 2),
                 "ctr": round(row.metrics.ctr * 100, 2),
                 "avg_cpc": format_micros(row.metrics.average_cpc),
+                "video_views": row.metrics.video_views,
+                "engagements": row.metrics.engagements,
+                "engagement_rate": round(row.metrics.engagement_rate * 100, 2),
             },
             conditions=conditions,
             date_range=date_range,
@@ -1440,3 +1448,194 @@ def get_industry_benchmarks(
     except Exception as e:
         logger.error("Failed to get industry benchmarks: %s", e, exc_info=True)
         return error_response(f"Failed to get industry benchmarks: {e}")
+
+
+@mcp.tool()
+def reach_frequency_report(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    campaign_id: Annotated[str | None, "Filter by campaign ID"] = None,
+    date_range: Annotated[str | None, "Predefined range: LAST_7_DAYS, LAST_30_DAYS, etc. (max 92 days for unique_users)"] = None,
+    start_date: Annotated[str | None, "Start date YYYY-MM-DD"] = None,
+    end_date: Annotated[str | None, "End date YYYY-MM-DD"] = None,
+    limit: Annotated[int, "Maximum results"] = 50,
+) -> str:
+    """Get reach and frequency metrics per campaign.
+
+    Shows unique users reached and average impression frequency.
+    Note: unique_users requires date ranges of 92 days or less.
+    Works for Display, Video, Discovery, and App campaigns.
+    """
+    try:
+        conditions = ["metrics.impressions > 0"]
+        if campaign_id:
+            conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
+
+        return _run_report(
+            customer_id=customer_id,
+            query_template="""
+                SELECT
+                    campaign.id,
+                    campaign.name,
+                    campaign.advertising_channel_type,
+                    metrics.unique_users,
+                    metrics.average_impression_frequency_per_user,
+                    metrics.impressions,
+                    metrics.clicks,
+                    metrics.cost_micros,
+                    metrics.conversions
+                FROM campaign
+                {where}
+                ORDER BY metrics.unique_users DESC
+                LIMIT {limit}
+            """,
+            field_extractor=lambda row: {
+                "campaign_id": str(row.campaign.id),
+                "campaign_name": row.campaign.name,
+                "channel_type": row.campaign.advertising_channel_type.name,
+                "unique_users": row.metrics.unique_users,
+                "avg_frequency": round(row.metrics.average_impression_frequency_per_user, 2),
+                "impressions": row.metrics.impressions,
+                "clicks": row.metrics.clicks,
+                "cost": format_micros(row.metrics.cost_micros),
+                "conversions": round(row.metrics.conversions, 2),
+            },
+            conditions=conditions,
+            date_range=date_range,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+            report_name="reach_frequency",
+        )
+    except Exception as e:
+        logger.error("Failed to get reach frequency report: %s", e, exc_info=True)
+        return error_response(f"Failed to get reach frequency report: {e}")
+
+
+@mcp.tool()
+def video_frequency_report(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    campaign_id: Annotated[str | None, "Filter by campaign ID"] = None,
+    date_range: Annotated[str | None, "Predefined range: LAST_7_DAYS, LAST_30_DAYS, etc. (max 31 days for frequency breakdown)"] = None,
+    start_date: Annotated[str | None, "Start date YYYY-MM-DD"] = None,
+    end_date: Annotated[str | None, "End date YYYY-MM-DD"] = None,
+    limit: Annotated[int, "Maximum results"] = 50,
+) -> str:
+    """Get frequency distribution showing how many unique users saw ads 2+, 3+, 4+, 5+, 10+ times.
+
+    Requires date range of 31 days or less for frequency breakdown metrics.
+    Works for Video, Display, Discovery, and App campaigns.
+    """
+    try:
+        conditions = ["metrics.impressions > 0"]
+        if campaign_id:
+            conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
+
+        return _run_report(
+            customer_id=customer_id,
+            query_template="""
+                SELECT
+                    campaign.id,
+                    campaign.name,
+                    campaign.advertising_channel_type,
+                    metrics.unique_users,
+                    metrics.unique_users_two_plus,
+                    metrics.unique_users_three_plus,
+                    metrics.unique_users_four_plus,
+                    metrics.unique_users_five_plus,
+                    metrics.unique_users_ten_plus,
+                    metrics.average_impression_frequency_per_user
+                FROM campaign
+                {where}
+                ORDER BY metrics.unique_users DESC
+                LIMIT {limit}
+            """,
+            field_extractor=lambda row: {
+                "campaign_id": str(row.campaign.id),
+                "campaign_name": row.campaign.name,
+                "channel_type": row.campaign.advertising_channel_type.name,
+                "unique_users": row.metrics.unique_users,
+                "users_2_plus": row.metrics.unique_users_two_plus,
+                "users_3_plus": row.metrics.unique_users_three_plus,
+                "users_4_plus": row.metrics.unique_users_four_plus,
+                "users_5_plus": row.metrics.unique_users_five_plus,
+                "users_10_plus": row.metrics.unique_users_ten_plus,
+                "avg_frequency": round(row.metrics.average_impression_frequency_per_user, 2),
+            },
+            conditions=conditions,
+            date_range=date_range,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+            report_name="frequency_distribution",
+        )
+    except Exception as e:
+        logger.error("Failed to get video frequency report: %s", e, exc_info=True)
+        return error_response(f"Failed to get video frequency report: {e}")
+
+
+@mcp.tool()
+def per_store_view_report(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    campaign_id: Annotated[str | None, "Filter by campaign ID"] = None,
+    date_range: Annotated[str | None, "Predefined range: LAST_7_DAYS, LAST_30_DAYS, etc."] = None,
+    start_date: Annotated[str | None, "Start date YYYY-MM-DD"] = None,
+    end_date: Annotated[str | None, "End date YYYY-MM-DD"] = None,
+    limit: Annotated[int, "Maximum results"] = 100,
+) -> str:
+    """Get store-level performance data for local campaigns.
+
+    Shows metrics broken down by physical store location (place_id, address, city).
+    Requires local campaign setup with Google Business Profile linked.
+    """
+    try:
+        conditions = ["metrics.impressions > 0"]
+        if campaign_id:
+            conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
+
+        return _run_report(
+            customer_id=customer_id,
+            query_template="""
+                SELECT
+                    per_store_view.place_id,
+                    per_store_view.business_name,
+                    per_store_view.address1,
+                    per_store_view.city,
+                    per_store_view.province,
+                    per_store_view.country_code,
+                    per_store_view.phone_number,
+                    campaign.id,
+                    campaign.name,
+                    metrics.impressions,
+                    metrics.clicks,
+                    metrics.cost_micros,
+                    metrics.conversions
+                FROM per_store_view
+                {where}
+                ORDER BY metrics.impressions DESC
+                LIMIT {limit}
+            """,
+            field_extractor=lambda row: {
+                "place_id": row.per_store_view.place_id,
+                "business_name": row.per_store_view.business_name,
+                "address": row.per_store_view.address1,
+                "city": row.per_store_view.city,
+                "province": row.per_store_view.province,
+                "country_code": row.per_store_view.country_code,
+                "phone": row.per_store_view.phone_number,
+                "campaign_id": str(row.campaign.id),
+                "campaign_name": row.campaign.name,
+                "impressions": row.metrics.impressions,
+                "clicks": row.metrics.clicks,
+                "cost": format_micros(row.metrics.cost_micros),
+                "conversions": round(row.metrics.conversions, 2),
+            },
+            conditions=conditions,
+            date_range=date_range,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+            report_name="stores",
+        )
+    except Exception as e:
+        logger.error("Failed to get per store view report: %s", e, exc_info=True)
+        return error_response(f"Failed to get per store view report: {e}")

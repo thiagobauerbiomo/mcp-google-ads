@@ -1075,6 +1075,7 @@ class TestPmaxNetworkBreakdownReport:
 
         mock_row = MagicMock()
         mock_row.segments.ad_network_type.name = "SEARCH"
+        mock_row.segments.ad_sub_network_type.name = "UNSPECIFIED"
         mock_row.campaign.id = 111
         mock_row.campaign.name = "PMax Campaign"
         mock_row.metrics.impressions = 1000
@@ -1084,6 +1085,9 @@ class TestPmaxNetworkBreakdownReport:
         mock_row.metrics.conversions_value = 500.0
         mock_row.metrics.ctr = 0.1
         mock_row.metrics.average_cpc = 500_000
+        mock_row.metrics.video_views = 200
+        mock_row.metrics.engagements = 50
+        mock_row.metrics.engagement_rate = 0.05
 
         mock_service = MagicMock()
         mock_service.search.return_value = [mock_row]
@@ -1091,7 +1095,12 @@ class TestPmaxNetworkBreakdownReport:
 
         result = assert_success(pmax_network_breakdown_report("123"))
         assert result["data"]["count"] == 1
-        assert result["data"]["network_breakdown"][0]["network"] == "SEARCH"
+        row_data = result["data"]["network_breakdown"][0]
+        assert row_data["network"] == "SEARCH"
+        assert row_data["sub_network"] == "UNSPECIFIED"
+        assert row_data["video_views"] == 200
+        assert row_data["engagements"] == 50
+        assert row_data["engagement_rate"] == 5.0
 
     @patch("mcp_google_ads.tools.reporting.get_service")
     @patch("mcp_google_ads.tools.reporting.resolve_customer_id", return_value="123")
@@ -1321,3 +1330,133 @@ class TestGetIndustryBenchmarks:
 
         result = assert_error(get_industry_benchmarks("123"))
         assert "Failed to get industry benchmarks" in result["error"]
+
+
+class TestReachFrequencyReport:
+    @patch("mcp_google_ads.tools.reporting.get_service")
+    @patch("mcp_google_ads.tools.reporting.resolve_customer_id", return_value="123")
+    def test_returns_reach_data(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.reporting import reach_frequency_report
+
+        mock_row = MagicMock()
+        mock_row.campaign.id = 111
+        mock_row.campaign.name = "Video Campaign"
+        mock_row.campaign.advertising_channel_type.name = "VIDEO"
+        mock_row.metrics.unique_users = 5000
+        mock_row.metrics.average_impression_frequency_per_user = 2.5
+        mock_row.metrics.impressions = 12500
+        mock_row.metrics.clicks = 300
+        mock_row.metrics.cost_micros = 15_000_000
+        mock_row.metrics.conversions = 10.0
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = [mock_row]
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(reach_frequency_report("123"))
+        assert result["data"]["count"] == 1
+        row_data = result["data"]["reach_frequency"][0]
+        assert row_data["unique_users"] == 5000
+        assert row_data["avg_frequency"] == 2.5
+        assert row_data["channel_type"] == "VIDEO"
+
+    @patch("mcp_google_ads.tools.reporting.get_service")
+    @patch("mcp_google_ads.tools.reporting.resolve_customer_id", return_value="123")
+    def test_api_exception(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.reporting import reach_frequency_report
+
+        mock_service = MagicMock()
+        mock_service.search.side_effect = Exception("API error")
+        mock_get_service.return_value = mock_service
+
+        result = assert_error(reach_frequency_report("123"))
+        assert "Failed" in result["error"]
+
+
+class TestVideoFrequencyReport:
+    @patch("mcp_google_ads.tools.reporting.get_service")
+    @patch("mcp_google_ads.tools.reporting.resolve_customer_id", return_value="123")
+    def test_returns_frequency_distribution(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.reporting import video_frequency_report
+
+        mock_row = MagicMock()
+        mock_row.campaign.id = 111
+        mock_row.campaign.name = "Video Campaign"
+        mock_row.campaign.advertising_channel_type.name = "VIDEO"
+        mock_row.metrics.unique_users = 10000
+        mock_row.metrics.unique_users_two_plus = 6000
+        mock_row.metrics.unique_users_three_plus = 3000
+        mock_row.metrics.unique_users_four_plus = 1500
+        mock_row.metrics.unique_users_five_plus = 800
+        mock_row.metrics.unique_users_ten_plus = 100
+        mock_row.metrics.average_impression_frequency_per_user = 3.2
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = [mock_row]
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(video_frequency_report("123"))
+        assert result["data"]["count"] == 1
+        row_data = result["data"]["frequency_distribution"][0]
+        assert row_data["unique_users"] == 10000
+        assert row_data["users_2_plus"] == 6000
+        assert row_data["users_10_plus"] == 100
+        assert row_data["avg_frequency"] == 3.2
+
+    @patch("mcp_google_ads.tools.reporting.get_service")
+    @patch("mcp_google_ads.tools.reporting.resolve_customer_id", return_value="123")
+    def test_api_exception(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.reporting import video_frequency_report
+
+        mock_service = MagicMock()
+        mock_service.search.side_effect = Exception("API error")
+        mock_get_service.return_value = mock_service
+
+        result = assert_error(video_frequency_report("123"))
+        assert "Failed" in result["error"]
+
+
+class TestPerStoreViewReport:
+    @patch("mcp_google_ads.tools.reporting.get_service")
+    @patch("mcp_google_ads.tools.reporting.resolve_customer_id", return_value="123")
+    def test_returns_store_data(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.reporting import per_store_view_report
+
+        mock_row = MagicMock()
+        mock_row.per_store_view.place_id = "ChIJ123abc"
+        mock_row.per_store_view.business_name = "Loja Centro"
+        mock_row.per_store_view.address1 = "Rua Principal, 100"
+        mock_row.per_store_view.city = "Belo Horizonte"
+        mock_row.per_store_view.province = "MG"
+        mock_row.per_store_view.country_code = "BR"
+        mock_row.per_store_view.phone_number = "+5531999999999"
+        mock_row.campaign.id = 111
+        mock_row.campaign.name = "Local Campaign"
+        mock_row.metrics.impressions = 2000
+        mock_row.metrics.clicks = 150
+        mock_row.metrics.cost_micros = 30_000_000
+        mock_row.metrics.conversions = 8.0
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = [mock_row]
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(per_store_view_report("123"))
+        assert result["data"]["count"] == 1
+        store = result["data"]["stores"][0]
+        assert store["place_id"] == "ChIJ123abc"
+        assert store["business_name"] == "Loja Centro"
+        assert store["city"] == "Belo Horizonte"
+        assert store["country_code"] == "BR"
+
+    @patch("mcp_google_ads.tools.reporting.get_service")
+    @patch("mcp_google_ads.tools.reporting.resolve_customer_id", return_value="123")
+    def test_api_exception(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.reporting import per_store_view_report
+
+        mock_service = MagicMock()
+        mock_service.search.side_effect = Exception("API error")
+        mock_get_service.return_value = mock_service
+
+        result = assert_error(per_store_view_report("123"))
+        assert "Failed" in result["error"]

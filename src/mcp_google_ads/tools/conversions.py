@@ -1,4 +1,4 @@
-"""Conversion tracking and management tools (6 tools)."""
+"""Conversion tracking and management tools (7 tools)."""
 
 from __future__ import annotations
 
@@ -185,7 +185,11 @@ def update_conversion_action(
     default_value: Annotated[float | None, "New default conversion value"] = None,
     counting_type: Annotated[str | None, "ONE_PER_CLICK or MANY_PER_CLICK"] = None,
 ) -> str:
-    """Update an existing conversion action's settings."""
+    """Update an existing conversion action's settings.
+
+    Note: To control whether a conversion feeds Smart Bidding (biddable),
+    use update_conversion_goal instead (operates on CustomerConversionGoal by category+origin).
+    """
     try:
         cid = resolve_customer_id(customer_id)
         client = get_client()
@@ -193,7 +197,7 @@ def update_conversion_action(
 
         operation = client.get_type("ConversionActionOperation")
         conversion_action = operation.update
-        conversion_action.resource_name = f"customers/{cid}/conversionActions/{conversion_action_id}"
+        conversion_action.resource_name = f"customers/{cid}/conversionActions/{validate_numeric_id(conversion_action_id, 'conversion_action_id')}"
 
         fields = []
         if name is not None:
@@ -326,3 +330,49 @@ def list_conversion_goals(
     except Exception as e:
         logger.error("Failed to list conversion goals: %s", e, exc_info=True)
         return error_response(f"Failed to list conversion goals: {e}")
+
+
+@mcp.tool()
+def update_conversion_goal(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    category: Annotated[str, "Conversion category: PURCHASE, SIGNUP, SUBMIT_LEAD_FORM, CONTACT, PAGE_VIEW, DEFAULT, etc."],
+    origin: Annotated[str, "Conversion origin: WEBSITE, GOOGLE_HOSTED, APP, CALL_FROM_ADS, STORE, YOUTUBE_HOSTED"],
+    biddable: Annotated[bool, "True = PRIMARY (feeds Smart Bidding), False = SECONDARY (observation only)"],
+) -> str:
+    """Update a customer conversion goal's biddable status.
+
+    Controls whether conversions of a given category+origin feed Smart Bidding (PRIMARY)
+    or are tracked as observation only (SECONDARY).
+
+    Use list_conversion_goals first to see available category+origin combinations.
+    Note: this affects ALL conversion actions sharing the same category+origin.
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        client = get_client()
+        service = get_service("CustomerConversionGoalService")
+
+        validated_category = validate_enum_value(category, "category")
+        validated_origin = validate_enum_value(origin, "origin")
+
+        operation = client.get_type("CustomerConversionGoalOperation")
+        goal = operation.update
+        goal.resource_name = f"customers/{cid}/customerConversionGoals/{validated_category}~{validated_origin}"
+        goal.biddable = biddable
+
+        client.copy_from(
+            operation.update_mask,
+            protobuf_helpers.field_mask_pb2.FieldMask(paths=["biddable"]),
+        )
+
+        response = service.mutate_customer_conversion_goals(
+            customer_id=cid,
+            operations=[operation],
+        )
+        return success_response(
+            {"resource_name": response.results[0].resource_name},
+            message=f"Conversion goal {validated_category}~{validated_origin} updated (biddable={biddable})",
+        )
+    except Exception as e:
+        logger.error("Failed to update conversion goal: %s", e, exc_info=True)
+        return error_response(f"Failed to update conversion goal: {e}")

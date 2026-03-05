@@ -74,6 +74,8 @@ def get_bidding_strategy(
                 bidding_strategy.maximize_conversions.target_cpa_micros,
                 bidding_strategy.target_cpa.target_cpa_micros,
                 bidding_strategy.target_roas.target_roas,
+                bidding_strategy.target_roas.target_roas_tolerance_percent_millis,
+                bidding_strategy.maximize_conversion_value.target_roas_tolerance_percent_millis,
                 bidding_strategy.target_spend.cpc_bid_ceiling_micros,
                 bidding_strategy.target_impression_share.location,
                 bidding_strategy.target_impression_share.location_fraction_micros,
@@ -97,8 +99,13 @@ def get_bidding_strategy(
                 data["target_cpa_micros"] = bs.target_cpa.target_cpa_micros
             elif bs.type_.name == "TARGET_ROAS":
                 data["target_roas"] = bs.target_roas.target_roas
+                if bs.target_roas.target_roas_tolerance_percent_millis:
+                    data["target_roas_tolerance_percent_millis"] = bs.target_roas.target_roas_tolerance_percent_millis
+            elif bs.type_.name == "MAXIMIZE_CONVERSION_VALUE":
+                if bs.maximize_conversion_value.target_roas_tolerance_percent_millis:
+                    data["target_roas_tolerance_percent_millis"] = bs.maximize_conversion_value.target_roas_tolerance_percent_millis
             elif bs.type_.name == "MAXIMIZE_CLICKS":
-                data["cpc_bid_ceiling_micros"] = bs.maximize_clicks.cpc_bid_ceiling_micros
+                data["cpc_bid_ceiling_micros"] = bs.target_spend.cpc_bid_ceiling_micros
             elif bs.type_.name == "TARGET_IMPRESSION_SHARE":
                 data["location"] = bs.target_impression_share.location.name
                 data["location_fraction_micros"] = bs.target_impression_share.location_fraction_micros
@@ -119,6 +126,7 @@ def create_bidding_strategy(
     target_cpa_micros: Annotated[int | None, "Target CPA in micros (for TARGET_CPA)"] = None,
     target_roas: Annotated[float | None, "Target ROAS (for TARGET_ROAS, e.g. 3.0)"] = None,
     cpc_bid_ceiling_micros: Annotated[int | None, "Max CPC bid in micros"] = None,
+    target_roas_tolerance_percent_millis: Annotated[int | None, "Smart Bidding Exploration tolerance in percent millis (e.g. 5000 = 5%). For TARGET_ROAS only."] = None,
 ) -> str:
     """Create a portfolio bidding strategy that can be shared across campaigns."""
     try:
@@ -132,15 +140,17 @@ def create_bidding_strategy(
 
         if strategy_type == "MAXIMIZE_CLICKS":
             if cpc_bid_ceiling_micros:
-                strategy.maximize_clicks.cpc_bid_ceiling_micros = cpc_bid_ceiling_micros
+                strategy.target_spend.cpc_bid_ceiling_micros = cpc_bid_ceiling_micros
             else:
-                strategy.maximize_clicks.cpc_bid_ceiling_micros = 0
+                strategy.target_spend.cpc_bid_ceiling_micros = 0
         elif strategy_type == "MAXIMIZE_CONVERSIONS":
             strategy.maximize_conversions.target_cpa_micros = target_cpa_micros or 0
         elif strategy_type == "TARGET_CPA":
             strategy.target_cpa.target_cpa_micros = target_cpa_micros or 0
         elif strategy_type == "TARGET_ROAS":
             strategy.target_roas.target_roas = target_roas or 0.0
+            if target_roas_tolerance_percent_millis is not None:
+                strategy.target_roas.target_roas_tolerance_percent_millis = target_roas_tolerance_percent_millis
         elif strategy_type == "TARGET_IMPRESSION_SHARE":
             strategy.target_impression_share.location = (
                 client.enums.TargetImpressionShareLocationEnum.ANYWHERE_ON_PAGE
@@ -171,6 +181,7 @@ def update_bidding_strategy(
     target_cpa_micros: Annotated[int | None, "New target CPA in micros"] = None,
     target_roas: Annotated[float | None, "New target ROAS"] = None,
     cpc_bid_ceiling_micros: Annotated[int | None, "New max CPC bid in micros"] = None,
+    target_roas_tolerance_percent_millis: Annotated[int | None, "Smart Bidding Exploration tolerance in percent millis (e.g. 5000 = 5%)"] = None,
 ) -> str:
     """Update a portfolio bidding strategy's settings."""
     try:
@@ -193,8 +204,11 @@ def update_bidding_strategy(
             strategy.target_roas.target_roas = target_roas
             fields.append("target_roas.target_roas")
         if cpc_bid_ceiling_micros is not None:
-            strategy.maximize_clicks.cpc_bid_ceiling_micros = cpc_bid_ceiling_micros
-            fields.append("maximize_clicks.cpc_bid_ceiling_micros")
+            strategy.target_spend.cpc_bid_ceiling_micros = cpc_bid_ceiling_micros
+            fields.append("target_spend.cpc_bid_ceiling_micros")
+        if target_roas_tolerance_percent_millis is not None:
+            strategy.target_roas.target_roas_tolerance_percent_millis = target_roas_tolerance_percent_millis
+            fields.append("target_roas.target_roas_tolerance_percent_millis")
 
         if not fields:
             return error_response("No fields to update")

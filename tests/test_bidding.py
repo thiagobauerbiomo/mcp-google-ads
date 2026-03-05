@@ -97,7 +97,7 @@ class TestGetBiddingStrategy:
         bs.status.name = "ENABLED"
         bs.campaign_count = 2
         bs.effective_currency_code = "USD"
-        bs.maximize_clicks.cpc_bid_ceiling_micros = 2_000_000
+        bs.target_spend.cpc_bid_ceiling_micros = 2_000_000
 
         mock_service = MagicMock()
         mock_service.search.return_value = [mock_row]
@@ -337,7 +337,7 @@ class TestCreateBiddingStrategy:
         )
         assert result["data"]["strategy_id"] == "507"
         operation = client.get_type.return_value
-        assert operation.create.maximize_clicks.cpc_bid_ceiling_micros == 2_000_000
+        assert operation.create.target_spend.cpc_bid_ceiling_micros == 2_000_000
 
 
 class TestUpdateBiddingStrategy:
@@ -431,7 +431,7 @@ class TestUpdateBiddingStrategy:
         result = assert_success(update_bidding_strategy("123", "111", cpc_bid_ceiling_micros=2_000_000))
         assert "updated" in result["message"]
         operation = client.get_type.return_value
-        assert operation.update.maximize_clicks.cpc_bid_ceiling_micros == 2_000_000
+        assert operation.update.target_spend.cpc_bid_ceiling_micros == 2_000_000
 
     @patch("mcp_google_ads.tools.bidding.get_service")
     @patch("mcp_google_ads.tools.bidding.get_client")
@@ -455,7 +455,7 @@ class TestUpdateBiddingStrategy:
         operation = client.get_type.return_value
         assert operation.update.name == "Updated"
         assert operation.update.target_roas.target_roas == 4.0
-        assert operation.update.maximize_clicks.cpc_bid_ceiling_micros == 1_000_000
+        assert operation.update.target_spend.cpc_bid_ceiling_micros == 1_000_000
         client.copy_from.assert_called_once()
 
     @patch("mcp_google_ads.tools.bidding.get_service")
@@ -517,3 +517,71 @@ class TestSetCampaignBiddingStrategy:
 
         result = assert_error(set_campaign_bidding_strategy("123", "555", "999"))
         assert "Failed to set campaign bidding strategy" in result["error"]
+
+
+class TestSmartBiddingExploration:
+    @patch("mcp_google_ads.tools.bidding.get_service")
+    @patch("mcp_google_ads.tools.bidding.resolve_customer_id", return_value="123")
+    def test_get_strategy_with_tolerance(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.bidding import get_bidding_strategy
+
+        mock_row = MagicMock()
+        bs = mock_row.bidding_strategy
+        bs.id = 444
+        bs.name = "ROAS Exploration"
+        bs.type_.name = "TARGET_ROAS"
+        bs.status.name = "ENABLED"
+        bs.campaign_count = 2
+        bs.effective_currency_code = "BRL"
+        bs.target_roas.target_roas = 4.0
+        bs.target_roas.target_roas_tolerance_percent_millis = 5000
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = [mock_row]
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(get_bidding_strategy("123", "444"))
+        assert result["data"]["target_roas"] == 4.0
+        assert result["data"]["target_roas_tolerance_percent_millis"] == 5000
+
+    @patch("mcp_google_ads.tools.bidding.get_service")
+    @patch("mcp_google_ads.tools.bidding.get_client")
+    @patch("mcp_google_ads.tools.bidding.resolve_customer_id", return_value="123")
+    def test_create_target_roas_with_tolerance(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.bidding import create_bidding_strategy
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(resource_name="customers/123/biddingStrategies/555")]
+        mock_service = MagicMock()
+        mock_service.mutate_bidding_strategies.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(
+            create_bidding_strategy("123", "ROAS Explore", "TARGET_ROAS", target_roas=3.0, target_roas_tolerance_percent_millis=5000)
+        )
+        assert result["data"]["strategy_id"] == "555"
+        operation = client.get_type.return_value
+        assert operation.create.target_roas.target_roas_tolerance_percent_millis == 5000
+
+    @patch("mcp_google_ads.tools.bidding.get_service")
+    @patch("mcp_google_ads.tools.bidding.get_client")
+    @patch("mcp_google_ads.tools.bidding.resolve_customer_id", return_value="123")
+    def test_update_tolerance(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.bidding import update_bidding_strategy
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(resource_name="customers/123/biddingStrategies/111")]
+        mock_service = MagicMock()
+        mock_service.mutate_bidding_strategies.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(update_bidding_strategy("123", "111", target_roas_tolerance_percent_millis=8000))
+        assert "updated" in result["message"]
+        operation = client.get_type.return_value
+        assert operation.update.target_roas.target_roas_tolerance_percent_millis == 8000

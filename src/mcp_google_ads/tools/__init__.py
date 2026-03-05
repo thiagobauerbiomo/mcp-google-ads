@@ -17,6 +17,7 @@ from . import (
     diagnostics,
     experiments,
     extensions,
+    incentives,
     keywords,
     labels,
     recommendations,
@@ -24,6 +25,7 @@ from . import (
     search,
     shared_sets,
     targeting,
+    youtube_uploads,
 )
 
 __all__ = [
@@ -43,6 +45,7 @@ __all__ = [
     "diagnostics",
     "experiments",
     "extensions",
+    "incentives",
     "keywords",
     "labels",
     "recommendations",
@@ -50,4 +53,5 @@ __all__ = [
     "search",
     "shared_sets",
     "targeting",
+    "youtube_uploads",
 ]

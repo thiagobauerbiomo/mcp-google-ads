@@ -131,6 +131,100 @@ class TestCampaignHealthCheck:
         result = assert_error(campaign_health_check(customer_id="1234567890"))
         assert "Failed to run campaign health check" in result["error"]
 
+    @patch("mcp_google_ads.tools.diagnostics.get_service")
+    @patch("mcp_google_ads.tools.diagnostics.resolve_customer_id", return_value="1234567890")
+    def test_pmax_low_assets(self, mock_resolve, mock_get_service):
+        mock_service = MagicMock()
+
+        # PMax campaign
+        campaign_row = MagicMock()
+        campaign_row.campaign.id = 999
+        campaign_row.campaign.name = "PMax Campaign"
+        campaign_row.campaign.status.name = "ENABLED"
+        campaign_row.campaign_budget.amount_micros = 30_000_000
+        campaign_row.campaign.advertising_channel_type.name = "PERFORMANCE_MAX"
+
+        # Asset group with only 1 headline
+        asset_row = MagicMock()
+        asset_row.asset_group.id = 555
+        asset_row.asset_group.name = "AG Default"
+        asset_row.asset_group_asset.field_type.name = "HEADLINE"
+        asset_row.campaign.id = 999
+
+        # Engagement row - has engagement so no issue there
+        engagement_row = MagicMock()
+        engagement_row.asset_group.id = 555
+        engagement_row.asset_group.name = "AG Default"
+        engagement_row.metrics.engagements = 100
+        engagement_row.metrics.video_views = 50
+        engagement_row.campaign.id = 999
+
+        mock_service.search.side_effect = [
+            [campaign_row],     # campaigns (PMax)
+            [],                 # ad strength
+            [],                 # keywords
+            [],                 # zero impressions
+            [asset_row],        # PMax asset check (only 1 headline)
+            [engagement_row],   # PMax engagement check
+        ]
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(campaign_health_check(customer_id="1234567890"))
+        data = result["data"]
+
+        issue_types = [i["type"] for i in data["issues"]]
+        assert "pmax_low_assets" in issue_types
+        assert "pmax_no_engagement" not in issue_types
+
+    @patch("mcp_google_ads.tools.diagnostics.get_service")
+    @patch("mcp_google_ads.tools.diagnostics.resolve_customer_id", return_value="1234567890")
+    def test_pmax_no_engagement(self, mock_resolve, mock_get_service):
+        mock_service = MagicMock()
+
+        # PMax campaign
+        campaign_row = MagicMock()
+        campaign_row.campaign.id = 999
+        campaign_row.campaign.name = "PMax Campaign"
+        campaign_row.campaign.status.name = "ENABLED"
+        campaign_row.campaign_budget.amount_micros = 30_000_000
+        campaign_row.campaign.advertising_channel_type.name = "PERFORMANCE_MAX"
+
+        # Enough assets
+        asset_rows = []
+        for ft in ["HEADLINE", "HEADLINE", "HEADLINE", "DESCRIPTION", "DESCRIPTION", "LONG_HEADLINE"]:
+            r = MagicMock()
+            r.asset_group.id = 555
+            r.asset_group.name = "AG Default"
+            r.asset_group_asset.field_type.name = ft
+            r.campaign.id = 999
+            asset_rows.append(r)
+
+        # Zero engagement
+        engagement_row = MagicMock()
+        engagement_row.asset_group.id = 555
+        engagement_row.asset_group.name = "AG Default"
+        engagement_row.metrics.engagements = 0
+        engagement_row.metrics.video_views = 0
+        engagement_row.campaign.id = 999
+
+        mock_service.search.side_effect = [
+            [campaign_row],     # campaigns (PMax)
+            [],                 # ad strength
+            [],                 # keywords
+            [],                 # zero impressions
+            asset_rows,         # PMax asset check (enough)
+            [engagement_row],   # PMax engagement check (zero)
+        ]
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(campaign_health_check(customer_id="1234567890"))
+        data = result["data"]
+
+        issue_types = [i["type"] for i in data["issues"]]
+        assert "pmax_low_assets" not in issue_types
+        assert "pmax_no_engagement" in issue_types
+        assert data["summary"]["info"] == 1
+
 
 # --- validate_landing_page ---
 

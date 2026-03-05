@@ -22,6 +22,9 @@ class TestAccountDashboard:
         mock_metrics_row.metrics.ctr = 0.05
         mock_metrics_row.metrics.average_cpc = 200_000
         mock_metrics_row.metrics.cost_per_conversion = 2_000_000
+        mock_metrics_row.metrics.engagements = 15
+        mock_metrics_row.metrics.engagement_rate = 0.015
+        mock_metrics_row.metrics.video_views = 200
 
         mock_campaign_row = MagicMock()
         mock_campaign_row.campaign.status.name = "ENABLED"
@@ -82,6 +85,8 @@ class TestMccPerformanceSummary:
         mock_perf_row.metrics.conversions = 2.0
         mock_perf_row.metrics.ctr = 0.05
         mock_perf_row.metrics.average_cpc = 200_000
+        mock_perf_row.metrics.engagements = 10
+        mock_perf_row.metrics.video_views = 50
 
         mock_mcc_service = MagicMock()
         mock_mcc_service.search.return_value = [mock_client_row]

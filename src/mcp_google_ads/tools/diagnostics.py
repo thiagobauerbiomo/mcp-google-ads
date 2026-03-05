@@ -130,6 +130,78 @@ def campaign_health_check(
                 "detail": f"Campaign '{row.campaign.name}' has 0 impressions in the last 7 days",
             })
 
+        # 5. PMax asset group asset count check
+        pmax_ids = [c["campaign_id"] for c in campaigns if c["channel_type"] == "PERFORMANCE_MAX"]
+        if pmax_ids:
+            for pmax_id in pmax_ids:
+                try:
+                    asset_query = f"""
+                        SELECT
+                            asset_group.id,
+                            asset_group.name,
+                            asset_group_asset.field_type,
+                            campaign.id
+                        FROM asset_group_asset
+                        WHERE campaign.id = {pmax_id}
+                            AND asset_group_asset.status = 'ENABLED'
+                    """
+                    response = service.search(customer_id=cid, query=asset_query)
+                    ag_assets: dict[str, dict[str, int]] = {}
+                    ag_names: dict[str, str] = {}
+                    for row in response:
+                        ag_id = str(row.asset_group.id)
+                        field_type = row.asset_group_asset.field_type.name
+                        if ag_id not in ag_assets:
+                            ag_assets[ag_id] = {}
+                            ag_names[ag_id] = row.asset_group.name
+                        ag_assets[ag_id][field_type] = ag_assets[ag_id].get(field_type, 0) + 1
+
+                    for ag_id, assets in ag_assets.items():
+                        headlines = assets.get("HEADLINE", 0)
+                        descriptions = assets.get("DESCRIPTION", 0)
+                        long_headlines = assets.get("LONG_HEADLINE", 0)
+                        if headlines < 3 or descriptions < 2 or long_headlines < 1:
+                            issues.append({
+                                "type": "pmax_low_assets",
+                                "severity": "warning",
+                                "campaign_id": pmax_id,
+                                "asset_group_id": ag_id,
+                                "asset_group_name": ag_names[ag_id],
+                                "detail": f"Asset group '{ag_names[ag_id]}' has {headlines} headlines, {descriptions} descriptions, {long_headlines} long headlines (min: 3/2/1)",
+                            })
+                except Exception as e:
+                    logger.warning("Failed to check PMax assets for campaign %s: %s", pmax_id, e)
+
+        # 6. PMax asset groups with zero engagement
+        if pmax_ids:
+            for pmax_id in pmax_ids:
+                try:
+                    engagement_query = f"""
+                        SELECT
+                            asset_group.id,
+                            asset_group.name,
+                            metrics.engagements,
+                            metrics.video_views,
+                            campaign.id
+                        FROM asset_group
+                        WHERE campaign.id = {pmax_id}
+                            AND asset_group.status = 'ENABLED'
+                            AND segments.date DURING LAST_30_DAYS
+                    """
+                    response = service.search(customer_id=cid, query=engagement_query)
+                    for row in response:
+                        if row.metrics.engagements == 0 and row.metrics.video_views == 0:
+                            issues.append({
+                                "type": "pmax_no_engagement",
+                                "severity": "info",
+                                "campaign_id": pmax_id,
+                                "asset_group_id": str(row.asset_group.id),
+                                "asset_group_name": row.asset_group.name,
+                                "detail": f"Asset group '{row.asset_group.name}' has 0 engagements and 0 video views in last 30 days",
+                            })
+                except Exception as e:
+                    logger.warning("Failed to check PMax engagement for campaign %s: %s", pmax_id, e)
+
         # Build summary counts
         summary = {"critical": 0, "warning": 0, "info": 0}
         for issue in issues:

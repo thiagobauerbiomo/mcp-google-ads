@@ -82,7 +82,9 @@ def mcc_performance_summary(
                         metrics.cost_micros,
                         metrics.conversions,
                         metrics.ctr,
-                        metrics.average_cpc
+                        metrics.average_cpc,
+                        metrics.engagements,
+                        metrics.video_views
                     FROM customer
                     {where}
                 """
@@ -99,6 +101,8 @@ def mcc_performance_summary(
                         "conversions": round(row.metrics.conversions, 2),
                         "ctr": round(row.metrics.ctr * 100, 2),
                         "avg_cpc": format_micros(row.metrics.average_cpc),
+                        "engagements": row.metrics.engagements,
+                        "video_views": row.metrics.video_views,
                     }
                     accounts_data.append(account_data)
 
@@ -106,6 +110,8 @@ def mcc_performance_summary(
                     totals["clicks"] += row.metrics.clicks
                     totals["cost_micros"] += row.metrics.cost_micros
                     totals["conversions"] += row.metrics.conversions
+                    totals["engagements"] = totals.get("engagements", 0) + row.metrics.engagements
+                    totals["video_views"] = totals.get("video_views", 0) + row.metrics.video_views
                     if row.metrics.cost_micros > 0:
                         totals["accounts_with_spend"] += 1
             except Exception as e:
@@ -168,7 +174,10 @@ def account_dashboard(
                 metrics.conversions_value,
                 metrics.ctr,
                 metrics.average_cpc,
-                metrics.cost_per_conversion
+                metrics.cost_per_conversion,
+                metrics.engagements,
+                metrics.engagement_rate,
+                metrics.video_views
             FROM customer
             {metrics_where}
         """
@@ -184,6 +193,9 @@ def account_dashboard(
                 "ctr": round(row.metrics.ctr * 100, 2),
                 "avg_cpc": format_micros(row.metrics.average_cpc),
                 "cost_per_conversion": format_micros(row.metrics.cost_per_conversion),
+                "engagements": row.metrics.engagements,
+                "engagement_rate": round(row.metrics.engagement_rate * 100, 2),
+                "video_views": row.metrics.video_views,
             }
 
         # 2. Campaign counts by status
