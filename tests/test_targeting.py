@@ -482,3 +482,165 @@ class TestListProximityTargeting:
 
         result = assert_error(list_proximity_targeting("123", "111"))
         assert "Failed to list proximity targeting" in result["error"]
+
+
+class TestListDeviceBidAdjustments:
+    @patch("mcp_google_ads.tools.targeting.get_service")
+    @patch("mcp_google_ads.tools.targeting.resolve_customer_id", return_value="123")
+    def test_returns_devices(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.targeting import list_device_bid_adjustments
+
+        mock_row = MagicMock()
+        mock_row.campaign_criterion.criterion_id = 888
+        mock_row.campaign_criterion.device.type_.name = "MOBILE"
+        mock_row.campaign_criterion.bid_modifier = 1.2
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = [mock_row]
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(list_device_bid_adjustments("123", "111"))
+        assert result["data"]["count"] == 1
+        assert result["data"]["devices"][0]["device_type"] == "MOBILE"
+        assert result["data"]["devices"][0]["bid_modifier"] == 1.2
+
+    @patch("mcp_google_ads.tools.targeting.get_service")
+    @patch("mcp_google_ads.tools.targeting.resolve_customer_id", return_value="123")
+    def test_empty_results(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.targeting import list_device_bid_adjustments
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = []
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(list_device_bid_adjustments("123", "111"))
+        assert result["data"]["count"] == 0
+
+    @patch("mcp_google_ads.tools.targeting.resolve_customer_id", side_effect=Exception("api error"))
+    def test_error_handling(self, mock_resolve):
+        from mcp_google_ads.tools.targeting import list_device_bid_adjustments
+
+        result = assert_error(list_device_bid_adjustments("123", "111"))
+        assert "Failed to list device bid adjustments" in result["error"]
+
+
+class TestListGeoTargeting:
+    @patch("mcp_google_ads.tools.targeting.get_service")
+    @patch("mcp_google_ads.tools.targeting.resolve_customer_id", return_value="123")
+    def test_returns_locations(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.targeting import list_geo_targeting
+
+        # Mock location criterion row
+        mock_row = MagicMock()
+        mock_row.campaign_criterion.criterion_id = 1234
+        mock_row.campaign_criterion.location.geo_target_constant = "geoTargetConstants/1001566"
+        mock_row.campaign_criterion.negative = False
+        mock_row.campaign_criterion.bid_modifier = 1.0
+
+        # Mock geo_target_constant name row
+        mock_name_row = MagicMock()
+        mock_name_row.geo_target_constant.resource_name = "geoTargetConstants/1001566"
+        mock_name_row.geo_target_constant.name = "Belo Horizonte"
+        mock_name_row.geo_target_constant.canonical_name = "Belo Horizonte,Minas Gerais,Brazil"
+        mock_name_row.geo_target_constant.country_code = "BR"
+
+        mock_service = MagicMock()
+        mock_service.search.side_effect = [[mock_row], [mock_name_row]]
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(list_geo_targeting("123", "111"))
+        assert result["data"]["count"] == 1
+        loc = result["data"]["locations"][0]
+        assert loc["name"] == "Belo Horizonte"
+        assert loc["negative"] is False
+        assert loc["country_code"] == "BR"
+
+    @patch("mcp_google_ads.tools.targeting.get_service")
+    @patch("mcp_google_ads.tools.targeting.resolve_customer_id", return_value="123")
+    def test_empty_results(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.targeting import list_geo_targeting
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = []
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(list_geo_targeting("123", "111"))
+        assert result["data"]["count"] == 0
+
+    @patch("mcp_google_ads.tools.targeting.resolve_customer_id", side_effect=Exception("geo error"))
+    def test_error_handling(self, mock_resolve):
+        from mcp_google_ads.tools.targeting import list_geo_targeting
+
+        result = assert_error(list_geo_targeting("123", "111"))
+        assert "Failed to list geo targeting" in result["error"]
+
+
+class TestListLanguageTargeting:
+    @patch("mcp_google_ads.tools.targeting.get_service")
+    @patch("mcp_google_ads.tools.targeting.resolve_customer_id", return_value="123")
+    def test_returns_languages(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.targeting import list_language_targeting
+
+        mock_row = MagicMock()
+        mock_row.campaign_criterion.criterion_id = 5555
+        mock_row.campaign_criterion.language.language_constant = "languageConstants/1014"
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = [mock_row]
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(list_language_targeting("123", "111"))
+        assert result["data"]["count"] == 1
+        lang = result["data"]["languages"][0]
+        assert lang["language_id"] == "1014"
+        assert lang["language_constant"] == "languageConstants/1014"
+
+    @patch("mcp_google_ads.tools.targeting.get_service")
+    @patch("mcp_google_ads.tools.targeting.resolve_customer_id", return_value="123")
+    def test_empty_results(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.targeting import list_language_targeting
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = []
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(list_language_targeting("123", "111"))
+        assert result["data"]["count"] == 0
+
+    @patch("mcp_google_ads.tools.targeting.resolve_customer_id", side_effect=Exception("lang error"))
+    def test_error_handling(self, mock_resolve):
+        from mcp_google_ads.tools.targeting import list_language_targeting
+
+        result = assert_error(list_language_targeting("123", "111"))
+        assert "Failed to list language targeting" in result["error"]
+
+
+class TestUpdateAdSchedule:
+    @patch("mcp_google_ads.tools.targeting.get_service")
+    @patch("mcp_google_ads.tools.targeting.get_client")
+    @patch("mcp_google_ads.tools.targeting.resolve_customer_id", return_value="123")
+    def test_updates_bid_modifier(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.targeting import update_ad_schedule
+
+        mock_service = MagicMock()
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(resource_name="customers/123/campaignCriteria/111~999")]
+        mock_service.mutate_campaign_criteria.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(update_ad_schedule("123", "111", "999", 1.5))
+        assert "updated" in result["message"]
+        assert "1.5" in result["message"]
+
+    @patch("mcp_google_ads.tools.targeting.resolve_customer_id", side_effect=Exception("update error"))
+    def test_error_handling(self, mock_resolve):
+        from mcp_google_ads.tools.targeting import update_ad_schedule
+
+        result = assert_error(update_ad_schedule("123", "111", "999", 1.5))
+        assert "Failed to update ad schedule" in result["error"]
+
+    def test_rejects_invalid_campaign_id(self):
+        from mcp_google_ads.tools.targeting import update_ad_schedule
+
+        result = assert_error(update_ad_schedule("123", "DROP TABLE", "999", 1.5))
+        assert "Failed to update ad schedule" in result["error"]

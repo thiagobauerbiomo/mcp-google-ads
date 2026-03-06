@@ -1,4 +1,4 @@
-"""Keyword management tools (11 tools)."""
+"""Keyword management tools (15 tools)."""
 
 from __future__ import annotations
 
@@ -691,3 +691,194 @@ def add_pmax_negative_keywords(
     except Exception as e:
         logger.error("Failed to add PMax negative keywords: %s", e, exc_info=True)
         return error_response(f"Failed to add PMax negative keywords: {e}")
+
+
+@mcp.tool()
+def bulk_update_keywords(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    updates: Annotated[
+        list[dict],
+        "List of dicts with keyword_id, ad_group_id, and optionally cpc_bid_micros (int) and/or status (ENABLED/PAUSED)",
+    ],
+) -> str:
+    """Update CPC bid and/or status for multiple keywords at once.
+
+    Example: [{"keyword_id": "123", "ad_group_id": "456", "cpc_bid_micros": 2000000},
+              {"keyword_id": "789", "ad_group_id": "456", "status": "PAUSED"}]
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+
+        error = validate_batch(updates, max_size=5000, required_fields=["keyword_id", "ad_group_id"], item_name="updates")
+        if error:
+            return error_response(error)
+
+        client = get_client()
+        service = get_service("AdGroupCriterionService")
+
+        operations = []
+        for item in updates:
+            kw_id = validate_numeric_id(item["keyword_id"], "keyword_id")
+            ag_id = validate_numeric_id(item["ad_group_id"], "ad_group_id")
+
+            operation = client.get_type("AdGroupCriterionOperation")
+            criterion = operation.update
+            criterion.resource_name = f"customers/{cid}/adGroupCriteria/{ag_id}~{kw_id}"
+
+            fields = []
+            if "cpc_bid_micros" in item:
+                criterion.cpc_bid_micros = int(item["cpc_bid_micros"])
+                fields.append("cpc_bid_micros")
+            if "status" in item:
+                validate_enum_value(item["status"], "status")
+                criterion.status = getattr(client.enums.AdGroupCriterionStatusEnum, item["status"])
+                fields.append("status")
+
+            if not fields:
+                continue
+
+            client.copy_from(
+                operation.update_mask,
+                protobuf_helpers.field_mask_pb2.FieldMask(paths=fields),
+            )
+            operations.append(operation)
+
+        if not operations:
+            return error_response("No valid updates provided (each item must have cpc_bid_micros and/or status)")
+
+        response = service.mutate_ad_group_criteria(customer_id=cid, operations=operations)
+        results = [r.resource_name for r in response.results]
+        return success_response(
+            {"updated": len(results), "resource_names": results},
+            message=f"{len(results)} keywords updated",
+        )
+    except Exception as e:
+        logger.error("Failed to bulk update keywords: %s", e, exc_info=True)
+        return error_response(f"Failed to bulk update keywords: {e}")
+
+
+@mcp.tool()
+def add_account_negative_keywords(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    keywords: Annotated[
+        list[dict],
+        "List of {text, match_type} for account-level negative keywords",
+    ],
+) -> str:
+    """Add account-level negative keywords (CustomerNegativeCriterion).
+
+    These apply to ALL campaigns in the account including Performance Max.
+    Different from shared set negatives — these are truly account-wide.
+    Example: [{"text": "free", "match_type": "BROAD"}, {"text": "download", "match_type": "PHRASE"}]
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+
+        error = validate_batch(keywords, max_size=5000, required_fields=["text"], item_name="keywords")
+        if error:
+            return error_response(error)
+
+        seen = set()
+        unique_keywords = []
+        for kw in keywords:
+            key = (kw["text"], kw.get("match_type", "BROAD"))
+            if key not in seen:
+                seen.add(key)
+                unique_keywords.append(kw)
+
+        client = get_client()
+        service = get_service("CustomerNegativeCriterionService")
+
+        operations = []
+        for kw in unique_keywords:
+            operation = client.get_type("CustomerNegativeCriterionOperation")
+            criterion = operation.create
+            criterion.type_ = client.enums.CriterionTypeEnum.KEYWORD
+            criterion.keyword.text = kw["text"]
+            match = kw.get("match_type", "BROAD")
+            validate_enum_value(match, "match_type")
+            criterion.keyword.match_type = getattr(
+                client.enums.KeywordMatchTypeEnum, match
+            )
+            operations.append(operation)
+
+        response = service.mutate_customer_negative_criteria(customer_id=cid, operations=operations)
+        return success_response(
+            {"added": len(response.results)},
+            message=f"{len(response.results)} account-level negative keywords added",
+        )
+    except Exception as e:
+        logger.error("Failed to add account negative keywords: %s", e, exc_info=True)
+        return error_response(f"Failed to add account negative keywords: {e}")
+
+
+@mcp.tool()
+def list_account_negative_keywords(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    limit: Annotated[int, "Maximum results"] = 500,
+) -> str:
+    """List account-level negative keywords (CustomerNegativeCriterion).
+
+    These apply to ALL campaigns including Performance Max.
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
+        service = get_service("GoogleAdsService")
+
+        query = f"""
+            SELECT
+                customer_negative_criterion.id,
+                customer_negative_criterion.type,
+                customer_negative_criterion.keyword.text,
+                customer_negative_criterion.keyword.match_type
+            FROM customer_negative_criterion
+            WHERE customer_negative_criterion.type = 'KEYWORD'
+            LIMIT {limit}
+        """
+        response = service.search(customer_id=cid, query=query)
+        negatives = []
+        for row in response:
+            negatives.append({
+                "criterion_id": str(row.customer_negative_criterion.id),
+                "type": row.customer_negative_criterion.type_.name,
+                "keyword": row.customer_negative_criterion.keyword.text,
+                "match_type": row.customer_negative_criterion.keyword.match_type.name,
+            })
+        return success_response({"negative_keywords": negatives, "count": len(negatives)})
+    except Exception as e:
+        logger.error("Failed to list account negative keywords: %s", e, exc_info=True)
+        return error_response(f"Failed to list account negative keywords: {e}")
+
+
+@mcp.tool()
+def remove_account_negative_keywords(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    criterion_ids: Annotated[list[str], "List of customer negative criterion IDs to remove"],
+) -> str:
+    """Remove account-level negative keywords by criterion ID."""
+    try:
+        cid = resolve_customer_id(customer_id)
+
+        error = validate_batch(criterion_ids, max_size=5000, item_name="criterion_ids")
+        if error:
+            return error_response(error)
+
+        client = get_client()
+        service = get_service("CustomerNegativeCriterionService")
+
+        operations = []
+        for criterion_id in criterion_ids:
+            safe_id = validate_numeric_id(criterion_id, "criterion_id")
+            operation = client.get_type("CustomerNegativeCriterionOperation")
+            operation.remove = f"customers/{cid}/customerNegativeCriteria/{safe_id}"
+            operations.append(operation)
+
+        response = service.mutate_customer_negative_criteria(customer_id=cid, operations=operations)
+        return success_response(
+            {"removed": len(response.results)},
+            message=f"{len(response.results)} account-level negative keywords removed",
+        )
+    except Exception as e:
+        logger.error("Failed to remove account negative keywords: %s", e, exc_info=True)
+        return error_response(f"Failed to remove account negative keywords: {e}")

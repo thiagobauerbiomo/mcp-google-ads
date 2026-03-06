@@ -1,4 +1,4 @@
-"""Advanced targeting management tools (13 tools)."""
+"""Advanced targeting management tools (17 tools)."""
 
 from __future__ import annotations
 
@@ -597,3 +597,192 @@ def list_proximity_targeting(
     except Exception as e:
         logger.error("Failed to list proximity targeting: %s", e, exc_info=True)
         return error_response(f"Failed to list proximity targeting: {e}")
+
+
+@mcp.tool()
+def list_device_bid_adjustments(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    campaign_id: Annotated[str, "The campaign ID"],
+) -> str:
+    """List current device bid adjustments for a campaign.
+
+    Returns the device type and bid modifier for each device criterion (MOBILE, DESKTOP, TABLET, CONNECTED_TV).
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        service = get_service("GoogleAdsService")
+
+        query = f"""
+            SELECT
+                campaign_criterion.device.type,
+                campaign_criterion.bid_modifier,
+                campaign_criterion.criterion_id
+            FROM campaign_criterion
+            WHERE campaign.id = {validate_numeric_id(campaign_id, "campaign_id")}
+                AND campaign_criterion.type = 'DEVICE'
+        """
+        response = service.search(customer_id=cid, query=query)
+        devices = []
+        for row in response:
+            devices.append({
+                "criterion_id": str(row.campaign_criterion.criterion_id),
+                "device_type": row.campaign_criterion.device.type_.name,
+                "bid_modifier": row.campaign_criterion.bid_modifier,
+            })
+        return success_response({"devices": devices, "count": len(devices)})
+    except Exception as e:
+        logger.error("Failed to list device bid adjustments: %s", e, exc_info=True)
+        return error_response(f"Failed to list device bid adjustments: {e}")
+
+
+@mcp.tool()
+def list_geo_targeting(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    campaign_id: Annotated[str, "The campaign ID"],
+) -> str:
+    """List all geo locations (positive and excluded) for a campaign.
+
+    Returns each location with its geo target constant name, whether it's negative (excluded),
+    criterion ID, and bid modifier.
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        service = get_service("GoogleAdsService")
+
+        query = f"""
+            SELECT
+                campaign_criterion.location.geo_target_constant,
+                campaign_criterion.negative,
+                campaign_criterion.criterion_id,
+                campaign_criterion.bid_modifier
+            FROM campaign_criterion
+            WHERE campaign.id = {validate_numeric_id(campaign_id, "campaign_id")}
+                AND campaign_criterion.type = 'LOCATION'
+        """
+        response = service.search(customer_id=cid, query=query)
+
+        # Collect geo_target_constant resource names to resolve names
+        rows_data = []
+        geo_constants = set()
+        for row in response:
+            geo_constant = row.campaign_criterion.location.geo_target_constant
+            rows_data.append({
+                "criterion_id": str(row.campaign_criterion.criterion_id),
+                "geo_target_constant": geo_constant,
+                "negative": row.campaign_criterion.negative,
+                "bid_modifier": row.campaign_criterion.bid_modifier,
+            })
+            geo_constants.add(geo_constant)
+
+        # Fetch geo target constant names
+        geo_names = {}
+        if geo_constants:
+            # Extract IDs from resource names like "geoTargetConstants/1001566"
+            geo_ids = [gc.split("/")[-1] for gc in geo_constants]
+            ids_str = ",".join(geo_ids)
+            name_query = f"""
+                SELECT
+                    geo_target_constant.resource_name,
+                    geo_target_constant.name,
+                    geo_target_constant.canonical_name,
+                    geo_target_constant.country_code
+                FROM geo_target_constant
+                WHERE geo_target_constant.id IN ({ids_str})
+            """
+            name_response = service.search(customer_id=cid, query=name_query)
+            for row in name_response:
+                geo_names[row.geo_target_constant.resource_name] = {
+                    "name": row.geo_target_constant.name,
+                    "canonical_name": row.geo_target_constant.canonical_name,
+                    "country_code": row.geo_target_constant.country_code,
+                }
+
+        locations = []
+        for rd in rows_data:
+            geo_info = geo_names.get(rd["geo_target_constant"], {})
+            locations.append({
+                "criterion_id": rd["criterion_id"],
+                "geo_target_constant": rd["geo_target_constant"],
+                "name": geo_info.get("name", ""),
+                "canonical_name": geo_info.get("canonical_name", ""),
+                "country_code": geo_info.get("country_code", ""),
+                "negative": rd["negative"],
+                "bid_modifier": rd["bid_modifier"],
+            })
+        return success_response({"locations": locations, "count": len(locations)})
+    except Exception as e:
+        logger.error("Failed to list geo targeting: %s", e, exc_info=True)
+        return error_response(f"Failed to list geo targeting: {e}")
+
+
+@mcp.tool()
+def list_language_targeting(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    campaign_id: Annotated[str, "The campaign ID"],
+) -> str:
+    """List all language targeting criteria for a campaign."""
+    try:
+        cid = resolve_customer_id(customer_id)
+        service = get_service("GoogleAdsService")
+
+        query = f"""
+            SELECT
+                campaign_criterion.language.language_constant,
+                campaign_criterion.criterion_id
+            FROM campaign_criterion
+            WHERE campaign.id = {validate_numeric_id(campaign_id, "campaign_id")}
+                AND campaign_criterion.type = 'LANGUAGE'
+        """
+        response = service.search(customer_id=cid, query=query)
+        languages = []
+        for row in response:
+            language_constant = row.campaign_criterion.language.language_constant
+            # Extract language ID from resource name like "languageConstants/1014"
+            language_id = language_constant.split("/")[-1] if language_constant else ""
+            languages.append({
+                "criterion_id": str(row.campaign_criterion.criterion_id),
+                "language_constant": language_constant,
+                "language_id": language_id,
+            })
+        return success_response({"languages": languages, "count": len(languages)})
+    except Exception as e:
+        logger.error("Failed to list language targeting: %s", e, exc_info=True)
+        return error_response(f"Failed to list language targeting: {e}")
+
+
+@mcp.tool()
+def update_ad_schedule(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    campaign_id: Annotated[str, "The campaign ID"],
+    criterion_id: Annotated[str, "The ad schedule criterion ID"],
+    bid_modifier: Annotated[float, "New bid modifier (1.0 = no change, 1.5 = +50%)"],
+) -> str:
+    """Update the bid modifier of an existing ad schedule.
+
+    Note: day_of_week, start_hour, end_hour CANNOT be updated — you must remove and recreate the schedule
+    to change those fields. Only the bid_modifier can be updated.
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        safe_campaign = validate_numeric_id(campaign_id, "campaign_id")
+        safe_criterion = validate_numeric_id(criterion_id, "criterion_id")
+        client = get_client()
+        service = get_service("CampaignCriterionService")
+
+        operation = client.get_type("CampaignCriterionOperation")
+        criterion = operation.update
+        criterion.resource_name = f"customers/{cid}/campaignCriteria/{safe_campaign}~{safe_criterion}"
+        criterion.bid_modifier = bid_modifier
+        client.copy_from(
+            operation.update_mask,
+            protobuf_helpers.field_mask_pb2.FieldMask(paths=["bid_modifier"]),
+        )
+
+        response = service.mutate_campaign_criteria(customer_id=cid, operations=[operation])
+        return success_response(
+            {"resource_name": response.results[0].resource_name},
+            message=f"Ad schedule {criterion_id} bid modifier updated to {bid_modifier} on campaign {campaign_id}",
+        )
+    except Exception as e:
+        logger.error("Failed to update ad schedule: %s", e, exc_info=True)
+        return error_response(f"Failed to update ad schedule: {e}")

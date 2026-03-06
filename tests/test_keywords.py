@@ -712,3 +712,224 @@ class TestAddPmaxNegativeKeywords:
             add_pmax_negative_keywords("", "555", [{"text": "test"}])
         )
         assert "Failed to add PMax negative keywords" in result["error"]
+
+
+class TestBulkUpdateKeywords:
+    @patch("mcp_google_ads.tools.keywords.get_service")
+    @patch("mcp_google_ads.tools.keywords.get_client")
+    @patch("mcp_google_ads.tools.keywords.resolve_customer_id", return_value="123")
+    def test_updates_multiple_keywords(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.keywords import bulk_update_keywords
+
+        mock_service = MagicMock()
+        mock_response = MagicMock()
+        r1 = MagicMock(resource_name="customers/123/adGroupCriteria/456~111")
+        r2 = MagicMock(resource_name="customers/123/adGroupCriteria/456~222")
+        mock_response.results = [r1, r2]
+        mock_service.mutate_ad_group_criteria.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        updates = [
+            {"keyword_id": "111", "ad_group_id": "456", "cpc_bid_micros": 2000000},
+            {"keyword_id": "222", "ad_group_id": "456", "status": "PAUSED"},
+        ]
+        result = assert_success(bulk_update_keywords("123", updates))
+        assert result["data"]["updated"] == 2
+        assert "updated" in result["message"].lower()
+
+    @patch("mcp_google_ads.tools.keywords.get_service")
+    @patch("mcp_google_ads.tools.keywords.get_client")
+    @patch("mcp_google_ads.tools.keywords.resolve_customer_id", return_value="123")
+    def test_skips_items_without_fields(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.keywords import bulk_update_keywords
+
+        mock_service = MagicMock()
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(resource_name="customers/123/adGroupCriteria/456~111")]
+        mock_service.mutate_ad_group_criteria.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        updates = [
+            {"keyword_id": "111", "ad_group_id": "456", "cpc_bid_micros": 2000000},
+            {"keyword_id": "222", "ad_group_id": "456"},  # no fields to update
+        ]
+        result = assert_success(bulk_update_keywords("123", updates))
+        assert result["data"]["updated"] == 1
+
+    @patch("mcp_google_ads.tools.keywords.get_service")
+    @patch("mcp_google_ads.tools.keywords.get_client")
+    @patch("mcp_google_ads.tools.keywords.resolve_customer_id", return_value="123")
+    def test_all_items_without_fields_returns_error(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.keywords import bulk_update_keywords
+
+        updates = [
+            {"keyword_id": "111", "ad_group_id": "456"},
+        ]
+        result = assert_error(bulk_update_keywords("123", updates))
+        assert "No valid updates" in result["error"]
+
+    def test_batch_too_large_returns_error(self):
+        from mcp_google_ads.tools.keywords import bulk_update_keywords
+
+        updates = [{"keyword_id": str(i), "ad_group_id": "456", "status": "PAUSED"} for i in range(5001)]
+        result = assert_error(bulk_update_keywords("123", updates))
+        assert "Maximum" in result["error"] or "5000" in result["error"]
+
+    @patch("mcp_google_ads.tools.keywords.resolve_customer_id", return_value="123")
+    def test_missing_required_fields(self, mock_resolve):
+        from mcp_google_ads.tools.keywords import bulk_update_keywords
+
+        updates = [{"cpc_bid_micros": 2000000}]  # missing keyword_id and ad_group_id
+        result = assert_error(bulk_update_keywords("123", updates))
+        assert "missing required field" in result["error"]
+
+    @patch("mcp_google_ads.tools.keywords.resolve_customer_id", side_effect=Exception("fail"))
+    def test_error_handling(self, mock_resolve):
+        from mcp_google_ads.tools.keywords import bulk_update_keywords
+
+        result = assert_error(bulk_update_keywords("", [{"keyword_id": "1", "ad_group_id": "2", "status": "PAUSED"}]))
+        assert "Failed" in result["error"]
+
+
+class TestAddAccountNegativeKeywords:
+    @patch("mcp_google_ads.tools.keywords.get_service")
+    @patch("mcp_google_ads.tools.keywords.get_client")
+    @patch("mcp_google_ads.tools.keywords.resolve_customer_id", return_value="123")
+    def test_adds_account_negatives(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.keywords import add_account_negative_keywords
+
+        mock_service = MagicMock()
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(), MagicMock()]
+        mock_service.mutate_customer_negative_criteria.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        kws = [
+            {"text": "free", "match_type": "BROAD"},
+            {"text": "download", "match_type": "PHRASE"},
+        ]
+        result = assert_success(add_account_negative_keywords("123", kws))
+        assert result["data"]["added"] == 2
+        assert "account-level" in result["message"].lower()
+
+    @patch("mcp_google_ads.tools.keywords.get_service")
+    @patch("mcp_google_ads.tools.keywords.get_client")
+    @patch("mcp_google_ads.tools.keywords.resolve_customer_id", return_value="123")
+    def test_deduplicates_keywords(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.keywords import add_account_negative_keywords
+
+        mock_service = MagicMock()
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock()]
+        mock_service.mutate_customer_negative_criteria.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        kws = [
+            {"text": "free", "match_type": "BROAD"},
+            {"text": "free", "match_type": "BROAD"},
+        ]
+        result = assert_success(add_account_negative_keywords("123", kws))
+        assert result["data"]["added"] == 1
+
+    def test_batch_too_large_returns_error(self):
+        from mcp_google_ads.tools.keywords import add_account_negative_keywords
+
+        kws = [{"text": f"keyword_{i}"} for i in range(5001)]
+        result = assert_error(add_account_negative_keywords("123", kws))
+        assert "Maximum" in result["error"] or "5000" in result["error"]
+
+    @patch("mcp_google_ads.tools.keywords.resolve_customer_id", return_value="123")
+    def test_missing_text_field(self, mock_resolve):
+        from mcp_google_ads.tools.keywords import add_account_negative_keywords
+
+        result = assert_error(add_account_negative_keywords("123", [{"match_type": "BROAD"}]))
+        assert "missing required field" in result["error"]
+
+    @patch("mcp_google_ads.tools.keywords.resolve_customer_id", side_effect=Exception("fail"))
+    def test_error_handling(self, mock_resolve):
+        from mcp_google_ads.tools.keywords import add_account_negative_keywords
+
+        result = assert_error(add_account_negative_keywords("", [{"text": "test"}]))
+        assert "Failed" in result["error"]
+
+
+class TestListAccountNegativeKeywords:
+    @patch("mcp_google_ads.tools.keywords.get_service")
+    @patch("mcp_google_ads.tools.keywords.resolve_customer_id", return_value="123")
+    def test_returns_account_negatives(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.keywords import list_account_negative_keywords
+
+        mock_row = MagicMock()
+        mock_row.customer_negative_criterion.id = 777
+        mock_row.customer_negative_criterion.type_.name = "KEYWORD"
+        mock_row.customer_negative_criterion.keyword.text = "free stuff"
+        mock_row.customer_negative_criterion.keyword.match_type.name = "BROAD"
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = [mock_row]
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(list_account_negative_keywords("123"))
+        assert result["data"]["count"] == 1
+        assert result["data"]["negative_keywords"][0]["keyword"] == "free stuff"
+        assert result["data"]["negative_keywords"][0]["criterion_id"] == "777"
+
+    @patch("mcp_google_ads.tools.keywords.get_service")
+    @patch("mcp_google_ads.tools.keywords.resolve_customer_id", return_value="123")
+    def test_returns_empty_list(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.keywords import list_account_negative_keywords
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = []
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(list_account_negative_keywords("123"))
+        assert result["data"]["count"] == 0
+
+    @patch("mcp_google_ads.tools.keywords.resolve_customer_id", side_effect=Exception("fail"))
+    def test_error_handling(self, mock_resolve):
+        from mcp_google_ads.tools.keywords import list_account_negative_keywords
+
+        result = assert_error(list_account_negative_keywords(""))
+        assert "Failed" in result["error"]
+
+
+class TestRemoveAccountNegativeKeywords:
+    @patch("mcp_google_ads.tools.keywords.get_service")
+    @patch("mcp_google_ads.tools.keywords.get_client")
+    @patch("mcp_google_ads.tools.keywords.resolve_customer_id", return_value="123")
+    def test_removes_account_negatives(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.keywords import remove_account_negative_keywords
+
+        mock_service = MagicMock()
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(), MagicMock()]
+        mock_service.mutate_customer_negative_criteria.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(remove_account_negative_keywords("123", ["777", "888"]))
+        assert result["data"]["removed"] == 2
+        assert "removed" in result["message"].lower()
+
+    def test_batch_too_large_returns_error(self):
+        from mcp_google_ads.tools.keywords import remove_account_negative_keywords
+
+        ids = [str(i) for i in range(5001)]
+        result = assert_error(remove_account_negative_keywords("123", ids))
+        assert "Maximum" in result["error"] or "5000" in result["error"]
+
+    @patch("mcp_google_ads.tools.keywords.get_service")
+    @patch("mcp_google_ads.tools.keywords.get_client")
+    @patch("mcp_google_ads.tools.keywords.resolve_customer_id", return_value="123")
+    def test_invalid_criterion_id(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.keywords import remove_account_negative_keywords
+
+        result = assert_error(remove_account_negative_keywords("123", ["abc"]))
+        assert "inválido" in result["error"]
+
+    @patch("mcp_google_ads.tools.keywords.resolve_customer_id", side_effect=Exception("fail"))
+    def test_error_handling(self, mock_resolve):
+        from mcp_google_ads.tools.keywords import remove_account_negative_keywords
+
+        result = assert_error(remove_account_negative_keywords("", ["777"]))
+        assert "Failed" in result["error"]

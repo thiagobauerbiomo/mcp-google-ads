@@ -1,4 +1,4 @@
-"""Reporting tools (24 tools)."""
+"""Reporting tools (26 tools)."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from ..utils import (
     resolve_customer_id,
     success_response,
     validate_date,
+    validate_enum_value,
     validate_limit,
     validate_numeric_id,
 )
@@ -1639,3 +1640,158 @@ def per_store_view_report(
     except Exception as e:
         logger.error("Failed to get per store view report: %s", e, exc_info=True)
         return error_response(f"Failed to get per store view report: {e}")
+
+
+@mcp.tool()
+def change_event_report(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    start_date: Annotated[str, "Start date YYYY-MM-DD (required)"],
+    end_date: Annotated[str, "End date YYYY-MM-DD (required)"],
+    resource_type: Annotated[str | None, "Filter by resource type: CAMPAIGN, AD_GROUP, AD, CRITERION, ASSET"] = None,
+    limit: Annotated[int, "Maximum results"] = 100,
+) -> str:
+    """Get change events with date filtering (unlike change_history_report which has date filter bugs).
+
+    Uses the change_event resource with change_date_time filtering, which supports
+    precise date ranges. Shows old and new resource states for each change.
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
+        service = get_service("GoogleAdsService")
+
+        validated_start = validate_date(start_date)
+        validated_end = validate_date(end_date)
+
+        conditions = [
+            f"change_event.change_date_time >= '{validated_start}'",
+            f"change_event.change_date_time <= '{validated_end}'",
+        ]
+
+        if resource_type:
+            validated_type = validate_enum_value(resource_type, "resource_type")
+            conditions.append(f"change_event.change_resource_type = '{validated_type}'")
+
+        where = "WHERE " + " AND ".join(conditions)
+
+        query = f"""
+            SELECT
+                change_event.change_date_time,
+                change_event.change_resource_type,
+                change_event.change_resource_name,
+                change_event.user_email,
+                change_event.client_type,
+                change_event.old_resource,
+                change_event.new_resource,
+                change_event.resource_change_operation
+            FROM change_event
+            {where}
+            ORDER BY change_event.change_date_time DESC
+            LIMIT {limit}
+        """
+        response = service.search(customer_id=cid, query=query)
+
+        events = []
+        for row in response:
+            events.append({
+                "change_date": row.change_event.change_date_time,
+                "resource_type": row.change_event.change_resource_type.name,
+                "resource_name": row.change_event.change_resource_name,
+                "user_email": row.change_event.user_email,
+                "client_type": row.change_event.client_type.name,
+                "old_resource": str(row.change_event.old_resource),
+                "new_resource": str(row.change_event.new_resource),
+                "operation": row.change_event.resource_change_operation.name,
+            })
+
+        return success_response({"events": events, "count": len(events)})
+    except Exception as e:
+        logger.error("Failed to get change event report: %s", e, exc_info=True)
+        return error_response(f"Failed to get change event report: {e}")
+
+
+@mcp.tool()
+def keyword_view_report(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    campaign_id: Annotated[str | None, "Filter by campaign ID"] = None,
+    date_range: Annotated[str | None, "Predefined range: LAST_7_DAYS, LAST_30_DAYS, etc."] = None,
+    start_date: Annotated[str | None, "Start date YYYY-MM-DD"] = None,
+    end_date: Annotated[str | None, "End date YYYY-MM-DD"] = None,
+    limit: Annotated[int, "Maximum results"] = 100,
+) -> str:
+    """Get keyword-level performance with quality score details and position estimates.
+
+    Provides more detail than keyword_performance_report: includes quality score components
+    (creative quality, predicted CTR, post-click quality), effective CPC bid, position
+    estimates (first page, first position, top of page), and search impression share metrics.
+    """
+    try:
+        conditions = []
+        if campaign_id:
+            conditions.append(f"campaign.id = {validate_numeric_id(campaign_id, 'campaign_id')}")
+
+        return _run_report(
+            customer_id=customer_id,
+            query_template="""
+                SELECT
+                    ad_group_criterion.keyword.text,
+                    ad_group_criterion.keyword.match_type,
+                    ad_group_criterion.status,
+                    ad_group_criterion.quality_info.quality_score,
+                    ad_group_criterion.quality_info.creative_quality_score,
+                    ad_group_criterion.quality_info.search_predicted_ctr,
+                    ad_group_criterion.quality_info.post_click_quality_score,
+                    ad_group_criterion.effective_cpc_bid_micros,
+                    ad_group_criterion.position_estimates.first_page_cpc_micros,
+                    ad_group_criterion.position_estimates.first_position_cpc_micros,
+                    ad_group_criterion.position_estimates.top_of_page_cpc_micros,
+                    campaign.name,
+                    ad_group.name,
+                    metrics.impressions,
+                    metrics.clicks,
+                    metrics.cost_micros,
+                    metrics.conversions,
+                    metrics.average_cpc,
+                    metrics.ctr,
+                    metrics.search_impression_share,
+                    metrics.search_top_impression_percentage,
+                    metrics.search_absolute_top_impression_percentage
+                FROM keyword_view
+                {where}
+                ORDER BY metrics.cost_micros DESC
+                LIMIT {limit}
+            """,
+            field_extractor=lambda row: {
+                "keyword": row.ad_group_criterion.keyword.text,
+                "match_type": row.ad_group_criterion.keyword.match_type.name,
+                "status": row.ad_group_criterion.status.name,
+                "quality_score": row.ad_group_criterion.quality_info.quality_score,
+                "creative_quality": row.ad_group_criterion.quality_info.creative_quality_score.name,
+                "predicted_ctr": row.ad_group_criterion.quality_info.search_predicted_ctr.name,
+                "post_click_quality": row.ad_group_criterion.quality_info.post_click_quality_score.name,
+                "effective_cpc_bid": format_micros(row.ad_group_criterion.effective_cpc_bid_micros),
+                "first_page_cpc": format_micros(row.ad_group_criterion.position_estimates.first_page_cpc_micros),
+                "first_position_cpc": format_micros(row.ad_group_criterion.position_estimates.first_position_cpc_micros),
+                "top_of_page_cpc": format_micros(row.ad_group_criterion.position_estimates.top_of_page_cpc_micros),
+                "campaign_name": row.campaign.name,
+                "ad_group_name": row.ad_group.name,
+                "impressions": row.metrics.impressions,
+                "clicks": row.metrics.clicks,
+                "cost": format_micros(row.metrics.cost_micros),
+                "conversions": round(row.metrics.conversions, 2),
+                "avg_cpc": format_micros(row.metrics.average_cpc),
+                "ctr": round(row.metrics.ctr * 100, 2),
+                "search_impression_share": round(row.metrics.search_impression_share * 100, 2),
+                "search_top_impression_pct": round(row.metrics.search_top_impression_percentage * 100, 2),
+                "search_abs_top_impression_pct": round(row.metrics.search_absolute_top_impression_percentage * 100, 2),
+            },
+            conditions=conditions,
+            date_range=date_range,
+            start_date=start_date,
+            end_date=end_date,
+            limit=limit,
+            report_name="keywords",
+        )
+    except Exception as e:
+        logger.error("Failed to get keyword view report: %s", e, exc_info=True)
+        return error_response(f"Failed to get keyword view report: {e}")

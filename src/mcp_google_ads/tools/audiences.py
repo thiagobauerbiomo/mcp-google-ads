@@ -1,9 +1,11 @@
-"""Audience management tools (12 tools)."""
+"""Audience management tools (15 tools)."""
 
 from __future__ import annotations
 
 import logging
 from typing import Annotated
+
+from google.api_core import protobuf_helpers
 
 from ..auth import get_client, get_service
 from ..coordinator import mcp
@@ -442,3 +444,114 @@ def remove_audience_from_ad_group(
     except Exception as e:
         logger.error("Failed to remove audience from ad group: %s", e, exc_info=True)
         return error_response(f"Failed to remove audience from ad group: {e}")
+
+
+@mcp.tool()
+def list_custom_audiences(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    limit: Annotated[int, "Maximum results"] = 100,
+) -> str:
+    """List all custom audiences in the account."""
+    try:
+        cid = resolve_customer_id(customer_id)
+        limit = validate_limit(limit)
+        service = get_service("GoogleAdsService")
+
+        query = f"""
+            SELECT
+                custom_audience.id,
+                custom_audience.name,
+                custom_audience.type,
+                custom_audience.description,
+                custom_audience.status
+            FROM custom_audience
+            ORDER BY custom_audience.name ASC
+            LIMIT {limit}
+        """
+        response = service.search(customer_id=cid, query=query)
+        audiences = []
+        for row in response:
+            audiences.append({
+                "id": str(row.custom_audience.id),
+                "name": row.custom_audience.name,
+                "type": row.custom_audience.type_.name,
+                "description": row.custom_audience.description,
+                "status": row.custom_audience.status.name,
+            })
+        return success_response({"audiences": audiences, "count": len(audiences)})
+    except Exception as e:
+        logger.error("Failed to list custom audiences: %s", e, exc_info=True)
+        return error_response(f"Failed to list custom audiences: {e}")
+
+
+@mcp.tool()
+def update_custom_audience(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    audience_id: Annotated[str, "The custom audience ID to update"],
+    name: Annotated[str | None, "New audience name"] = None,
+    description: Annotated[str | None, "New audience description"] = None,
+) -> str:
+    """Update a custom audience's name or description. At least one field must be provided."""
+    try:
+        cid = resolve_customer_id(customer_id)
+        safe_id = validate_numeric_id(audience_id, "audience_id")
+        client = get_client()
+        service = get_service("CustomAudienceService")
+
+        operation = client.get_type("CustomAudienceOperation")
+        audience = operation.update
+        audience.resource_name = f"customers/{cid}/customAudiences/{safe_id}"
+
+        fields = []
+        if name is not None:
+            audience.name = name
+            fields.append("name")
+        if description is not None:
+            audience.description = description
+            fields.append("description")
+
+        if not fields:
+            return error_response("No fields to update — provide at least name or description")
+
+        client.copy_from(
+            operation.update_mask,
+            protobuf_helpers.field_mask_pb2.FieldMask(paths=fields),
+        )
+
+        response = service.mutate_custom_audiences(customer_id=cid, operations=[operation])
+        return success_response(
+            {"resource_name": response.results[0].resource_name},
+            message=f"Custom audience {audience_id} updated",
+        )
+    except Exception as e:
+        logger.error("Failed to update custom audience: %s", e, exc_info=True)
+        return error_response(f"Failed to update custom audience: {e}")
+
+
+@mcp.tool()
+def remove_custom_audience(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    audience_id: Annotated[str, "The custom audience ID to remove"],
+) -> str:
+    """Remove a custom audience. WARNING: This action is PERMANENT and cannot be undone.
+
+    The audience will be permanently deleted and cannot be recovered.
+    Make sure the audience is not in use by any campaign or ad group before removing.
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        safe_id = validate_numeric_id(audience_id, "audience_id")
+        client = get_client()
+        service = get_service("CustomAudienceService")
+
+        operation = client.get_type("CustomAudienceOperation")
+        operation.remove = f"customers/{cid}/customAudiences/{safe_id}"
+
+        response = service.mutate_custom_audiences(customer_id=cid, operations=[operation])
+        return success_response(
+            {"resource_name": response.results[0].resource_name},
+            message=f"Custom audience {audience_id} permanently removed",
+        )
+    except Exception as e:
+        logger.error("Failed to remove custom audience: %s", e, exc_info=True)
+        return error_response(f"Failed to remove custom audience: {e}")

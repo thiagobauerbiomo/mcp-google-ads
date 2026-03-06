@@ -1,4 +1,4 @@
-"""Campaign type creation tools — Performance Max, Display, Video, Shopping, Demand Gen, App (14 tools)."""
+"""Campaign type creation tools — Performance Max, Display, Video, Shopping, Demand Gen, App (17 tools)."""
 
 from __future__ import annotations
 
@@ -834,3 +834,106 @@ def list_listing_group_filters(
     except Exception as e:
         logger.error("Failed to list listing group filters: %s", e, exc_info=True)
         return error_response(f"Failed to list listing group filters: {e}")
+
+
+@mcp.tool()
+def get_asset_group(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    asset_group_id: Annotated[str, "The asset group ID"],
+) -> str:
+    """Get detailed information about a single asset group."""
+    try:
+        cid = resolve_customer_id(customer_id)
+        safe_ag = validate_numeric_id(asset_group_id, "asset_group_id")
+        service = get_service("GoogleAdsService")
+
+        query = f"""
+            SELECT
+                asset_group.id,
+                asset_group.name,
+                asset_group.campaign,
+                asset_group.status,
+                asset_group.final_urls,
+                asset_group.final_mobile_urls,
+                asset_group.path1,
+                asset_group.path2
+            FROM asset_group
+            WHERE asset_group.id = {safe_ag}
+        """
+        response = service.search(customer_id=cid, query=query)
+        rows = list(response)
+        if not rows:
+            return error_response(f"Asset group {asset_group_id} not found")
+
+        row = rows[0]
+        return success_response({
+            "asset_group_id": str(row.asset_group.id),
+            "name": row.asset_group.name,
+            "campaign": row.asset_group.campaign,
+            "status": row.asset_group.status.name,
+            "final_urls": list(row.asset_group.final_urls),
+            "final_mobile_urls": list(row.asset_group.final_mobile_urls),
+            "path1": row.asset_group.path1,
+            "path2": row.asset_group.path2,
+        })
+    except Exception as e:
+        logger.error("Failed to get asset group: %s", e, exc_info=True)
+        return error_response(f"Failed to get asset group: {e}")
+
+
+@mcp.tool()
+def remove_asset_group(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    asset_group_id: Annotated[str, "The asset group ID to remove"],
+) -> str:
+    """Remove an asset group from a Performance Max campaign.
+
+    WARNING: This operation is PERMANENT and cannot be undone. The asset group
+    and all its linked assets will be removed. Use with extreme caution.
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        safe_ag = validate_numeric_id(asset_group_id, "asset_group_id")
+        client = get_client()
+        service = get_service("AssetGroupService")
+
+        operation = client.get_type("AssetGroupOperation")
+        operation.remove = f"customers/{cid}/assetGroups/{safe_ag}"
+
+        response = service.mutate_asset_groups(customer_id=cid, operations=[operation])
+        return success_response(
+            {"resource_name": response.results[0].resource_name},
+            message=f"Asset group {asset_group_id} PERMANENTLY removed",
+        )
+    except Exception as e:
+        logger.error("Failed to remove asset group: %s", e, exc_info=True)
+        return error_response(f"Failed to remove asset group: {e}")
+
+
+@mcp.tool()
+def remove_listing_group_filter(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    asset_group_id: Annotated[str, "The asset group ID"],
+    filter_id: Annotated[str, "The listing group filter ID"],
+) -> str:
+    """Remove a listing group filter from an asset group."""
+    try:
+        cid = resolve_customer_id(customer_id)
+        safe_ag = validate_numeric_id(asset_group_id, "asset_group_id")
+        safe_filter = validate_numeric_id(filter_id, "filter_id")
+        client = get_client()
+        service = get_service("AssetGroupListingGroupFilterService")
+
+        operation = client.get_type("AssetGroupListingGroupFilterOperation")
+        operation.remove = f"customers/{cid}/assetGroupListingGroupFilters/{safe_ag}~{safe_filter}"
+
+        response = service.mutate_asset_group_listing_group_filters(
+            customer_id=cid, operations=[operation]
+        )
+        return success_response(
+            {"resource_name": response.results[0].resource_name},
+            message=f"Listing group filter {filter_id} removed from asset group {asset_group_id}",
+        )
+    except Exception as e:
+        logger.error("Failed to remove listing group filter: %s", e, exc_info=True)
+        return error_response(f"Failed to remove listing group filter: {e}")

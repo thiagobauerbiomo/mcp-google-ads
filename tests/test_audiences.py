@@ -494,3 +494,175 @@ class TestRemoveAudienceFromAdGroup:
 
         result = assert_error(remove_audience_from_ad_group("123", "abc", "555"))
         assert "Failed to remove audience from ad group" in result["error"]
+
+
+class TestListCustomAudiences:
+    @patch("mcp_google_ads.tools.audiences.get_service")
+    @patch("mcp_google_ads.tools.audiences.resolve_customer_id", return_value="123")
+    def test_returns_audiences(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.audiences import list_custom_audiences
+
+        mock_row = MagicMock()
+        mock_row.custom_audience.id = 999
+        mock_row.custom_audience.name = "My Custom Audience"
+        mock_row.custom_audience.type_.name = "SEARCH"
+        mock_row.custom_audience.description = "Test desc"
+        mock_row.custom_audience.status.name = "ENABLED"
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = [mock_row]
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(list_custom_audiences("123"))
+        assert result["data"]["count"] == 1
+        assert result["data"]["audiences"][0]["name"] == "My Custom Audience"
+        assert result["data"]["audiences"][0]["id"] == "999"
+        assert result["data"]["audiences"][0]["type"] == "SEARCH"
+
+    @patch("mcp_google_ads.tools.audiences.get_service")
+    @patch("mcp_google_ads.tools.audiences.resolve_customer_id", return_value="123")
+    def test_empty_list(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.audiences import list_custom_audiences
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = []
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(list_custom_audiences("123"))
+        assert result["data"]["count"] == 0
+        assert result["data"]["audiences"] == []
+
+    @patch("mcp_google_ads.tools.audiences.resolve_customer_id", side_effect=Exception("API error"))
+    def test_error_handling(self, mock_resolve):
+        from mcp_google_ads.tools.audiences import list_custom_audiences
+
+        result = assert_error(list_custom_audiences("123"))
+        assert "Failed to list custom audiences" in result["error"]
+
+
+class TestUpdateCustomAudience:
+    @patch("mcp_google_ads.tools.audiences.get_service")
+    @patch("mcp_google_ads.tools.audiences.get_client")
+    @patch("mcp_google_ads.tools.audiences.resolve_customer_id", return_value="123")
+    def test_update_name(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.audiences import update_custom_audience
+
+        client = MagicMock()
+        mock_client.return_value = client
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(resource_name="customers/123/customAudiences/999")]
+        mock_service = MagicMock()
+        mock_service.mutate_custom_audiences.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(update_custom_audience("123", "999", name="New Name"))
+        assert "resource_name" in result["data"]
+        assert "updated" in result["message"]
+
+    @patch("mcp_google_ads.tools.audiences.get_service")
+    @patch("mcp_google_ads.tools.audiences.get_client")
+    @patch("mcp_google_ads.tools.audiences.resolve_customer_id", return_value="123")
+    def test_update_description(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.audiences import update_custom_audience
+
+        client = MagicMock()
+        mock_client.return_value = client
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(resource_name="customers/123/customAudiences/999")]
+        mock_service = MagicMock()
+        mock_service.mutate_custom_audiences.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(update_custom_audience("123", "999", description="New desc"))
+        assert "resource_name" in result["data"]
+
+    @patch("mcp_google_ads.tools.audiences.get_service")
+    @patch("mcp_google_ads.tools.audiences.get_client")
+    @patch("mcp_google_ads.tools.audiences.resolve_customer_id", return_value="123")
+    def test_update_both_fields(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.audiences import update_custom_audience
+
+        client = MagicMock()
+        mock_client.return_value = client
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(resource_name="customers/123/customAudiences/999")]
+        mock_service = MagicMock()
+        mock_service.mutate_custom_audiences.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(update_custom_audience("123", "999", name="New", description="Desc"))
+        assert "resource_name" in result["data"]
+
+    @patch("mcp_google_ads.tools.audiences.get_service")
+    @patch("mcp_google_ads.tools.audiences.get_client")
+    @patch("mcp_google_ads.tools.audiences.resolve_customer_id", return_value="123")
+    def test_no_fields_provided(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.audiences import update_custom_audience
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        result = assert_error(update_custom_audience("123", "999"))
+        assert "No fields to update" in result["error"]
+
+    def test_invalid_audience_id(self):
+        from mcp_google_ads.tools.audiences import update_custom_audience
+
+        result = assert_error(update_custom_audience("123", "abc", name="Test"))
+        assert "Failed to update custom audience" in result["error"]
+
+    @patch("mcp_google_ads.tools.audiences.get_service")
+    @patch("mcp_google_ads.tools.audiences.get_client")
+    @patch("mcp_google_ads.tools.audiences.resolve_customer_id", return_value="123")
+    def test_api_error(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.audiences import update_custom_audience
+
+        client = MagicMock()
+        mock_client.return_value = client
+        mock_service = MagicMock()
+        mock_service.mutate_custom_audiences.side_effect = Exception("API error")
+        mock_get_service.return_value = mock_service
+
+        result = assert_error(update_custom_audience("123", "999", name="Test"))
+        assert "Failed to update custom audience" in result["error"]
+
+
+class TestRemoveCustomAudience:
+    @patch("mcp_google_ads.tools.audiences.get_service")
+    @patch("mcp_google_ads.tools.audiences.get_client")
+    @patch("mcp_google_ads.tools.audiences.resolve_customer_id", return_value="123")
+    def test_success(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.audiences import remove_custom_audience
+
+        client = MagicMock()
+        mock_client.return_value = client
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(resource_name="customers/123/customAudiences/999")]
+        mock_service = MagicMock()
+        mock_service.mutate_custom_audiences.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(remove_custom_audience("123", "999"))
+        assert "resource_name" in result["data"]
+        assert "permanently removed" in result["message"]
+
+    def test_invalid_audience_id(self):
+        from mcp_google_ads.tools.audiences import remove_custom_audience
+
+        result = assert_error(remove_custom_audience("123", "abc"))
+        assert "Failed to remove custom audience" in result["error"]
+
+    @patch("mcp_google_ads.tools.audiences.get_service")
+    @patch("mcp_google_ads.tools.audiences.get_client")
+    @patch("mcp_google_ads.tools.audiences.resolve_customer_id", return_value="123")
+    def test_api_error(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.audiences import remove_custom_audience
+
+        client = MagicMock()
+        mock_client.return_value = client
+        mock_service = MagicMock()
+        mock_service.mutate_custom_audiences.side_effect = Exception("API error")
+        mock_get_service.return_value = mock_service
+
+        result = assert_error(remove_custom_audience("123", "999"))
+        assert "Failed to remove custom audience" in result["error"]

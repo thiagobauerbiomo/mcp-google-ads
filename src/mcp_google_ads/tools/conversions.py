@@ -1,4 +1,4 @@
-"""Conversion tracking and management tools (7 tools)."""
+"""Conversion tracking and management tools (9 tools)."""
 
 from __future__ import annotations
 
@@ -376,3 +376,91 @@ def update_conversion_goal(
     except Exception as e:
         logger.error("Failed to update conversion goal: %s", e, exc_info=True)
         return error_response(f"Failed to update conversion goal: {e}")
+
+
+@mcp.tool()
+def list_campaign_conversion_goals(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    campaign_id: Annotated[str, "The campaign ID"],
+) -> str:
+    """List conversion goals at the campaign level.
+
+    Shows which conversion categories are biddable (PRIMARY) or observation-only
+    for a specific campaign. Campaign-level goals override customer-level goals.
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        camp_id = validate_numeric_id(campaign_id, "campaign_id")
+        service = get_service("GoogleAdsService")
+
+        query = f"""
+            SELECT
+                campaign.id,
+                campaign.name,
+                campaign_conversion_goal.category,
+                campaign_conversion_goal.origin,
+                campaign_conversion_goal.biddable
+            FROM campaign_conversion_goal
+            WHERE campaign.id = {camp_id}
+        """
+        response = service.search(customer_id=cid, query=query)
+        goals = []
+        for row in response:
+            goals.append({
+                "campaign_id": str(row.campaign.id),
+                "campaign_name": row.campaign.name,
+                "category": row.campaign_conversion_goal.category.name,
+                "origin": row.campaign_conversion_goal.origin.name,
+                "biddable": row.campaign_conversion_goal.biddable,
+            })
+        return success_response({"campaign_conversion_goals": goals, "count": len(goals)})
+    except Exception as e:
+        logger.error("Failed to list campaign conversion goals: %s", e, exc_info=True)
+        return error_response(f"Failed to list campaign conversion goals: {e}")
+
+
+@mcp.tool()
+def update_campaign_conversion_goal(
+    customer_id: Annotated[str, "The Google Ads customer ID"],
+    campaign_id: Annotated[str, "The campaign ID"],
+    category: Annotated[str, "Conversion category: PURCHASE, SIGNUP, SUBMIT_LEAD_FORM, CONTACT, PAGE_VIEW, DEFAULT, etc."],
+    origin: Annotated[str, "Conversion origin: WEBSITE, GOOGLE_HOSTED, APP, CALL_FROM_ADS, STORE, YOUTUBE_HOSTED"],
+    biddable: Annotated[bool, "True = PRIMARY (feeds Smart Bidding), False = SECONDARY (observation only)"],
+) -> str:
+    """Update a campaign-level conversion goal's biddable status.
+
+    Campaign-level goals override customer-level goals. Use this to control which
+    conversion categories feed Smart Bidding for a specific campaign.
+
+    Use list_campaign_conversion_goals first to see available category+origin combinations.
+    """
+    try:
+        cid = resolve_customer_id(customer_id)
+        camp_id = validate_numeric_id(campaign_id, "campaign_id")
+        client = get_client()
+        service = get_service("CampaignConversionGoalService")
+
+        validated_category = validate_enum_value(category, "category")
+        validated_origin = validate_enum_value(origin, "origin")
+
+        operation = client.get_type("CampaignConversionGoalOperation")
+        goal = operation.update
+        goal.resource_name = f"customers/{cid}/campaignConversionGoals/{camp_id}~{validated_category}~{validated_origin}"
+        goal.biddable = biddable
+
+        client.copy_from(
+            operation.update_mask,
+            protobuf_helpers.field_mask_pb2.FieldMask(paths=["biddable"]),
+        )
+
+        response = service.mutate_campaign_conversion_goals(
+            customer_id=cid,
+            operations=[operation],
+        )
+        return success_response(
+            {"resource_name": response.results[0].resource_name},
+            message=f"Campaign {camp_id} conversion goal {validated_category}~{validated_origin} updated (biddable={biddable})",
+        )
+    except Exception as e:
+        logger.error("Failed to update campaign conversion goal: %s", e, exc_info=True)
+        return error_response(f"Failed to update campaign conversion goal: {e}")

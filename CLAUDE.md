@@ -5,7 +5,7 @@
 src/mcp_google_ads/
 ├── __init__.py        # __version__ = "0.1.0"
 ├── server.py          # Entry point (importa tools, roda mcp.run(), LOG_LEVEL via env)
-├── coordinator.py     # Singleton FastMCP("google-ads") com instructions detalhadas (177 tools)
+├── coordinator.py     # Singleton FastMCP("google-ads") com instructions detalhadas (201 tools)
 ├── auth.py            # GoogleAdsClient singleton via OAuth2 (retry com backoff exponencial)
 ├── config.py          # GoogleAdsConfig dataclass (env vars)
 ├── utils.py           # Helpers: resolve_customer_id, proto_to_dict, success/error_response,
@@ -19,20 +19,20 @@ src/mcp_google_ads/
     ├── accounts.py           #  4: list_accessible_customers, get_customer_info, get_account_hierarchy, list_customer_clients
     ├── account_management.py #  3: list_account_links, get_billing_info, list_account_users
     ├── campaigns.py          #  9: list, get, create, update, set_status, remove, list_labels, set_tracking_template, clone_campaign
-    ├── campaign_types.py     # 14: create_pmax, list/update_asset_groups, create_display/video/shopping/demand_gen/app, create_asset_group, add/remove/list_asset_group_assets, create/list_listing_group_filters
+    ├── campaign_types.py     # 17: create_pmax, get/create/list/update/remove_asset_groups, create_display/video/shopping/demand_gen/app, add/remove/list_asset_group_assets, create/list/remove_listing_group_filters
     ├── ad_groups.py          #  7: list, get, create, update, set_status, remove, clone_ad_group
     ├── ads.py                #  7: list, get, create_rsa, create_responsive_display_ad, update, set_status, get_strength
-    ├── keywords.py           # 11: list, add, update, remove, neg_campaign, neg_ad_group, neg_shared, neg_pmax, generate_ideas, forecast, list_negative
+    ├── keywords.py           # 15: list, add, update, remove, bulk_update, neg_campaign, neg_ad_group, neg_shared, neg_pmax, generate_ideas, forecast, list_negative, add/list/remove_account_negative
     ├── budgets.py            #  5: list, get, create, update, remove
-    ├── bidding.py            #  5: list, get, create, update, set_campaign_strategy
-    ├── reporting.py          # 24: campaign/adgroup/ad/keyword perf, search_terms, audience, geo, change_history, device, hourly, age_gender, placement, quality_score, comparison, pmax_search_term_insights, pmax_network_breakdown, auction_insights, landing_page, asset_performance, shopping_performance, get_industry_benchmarks, reach_frequency, video_frequency, per_store_view
+    ├── bidding.py            # 12: list, get, create, update, set_campaign_strategy, list/create/remove_bidding_data_exclusion, list/create/remove_seasonality_adjustment, list_accessible_bidding_strategies
+    ├── reporting.py          # 26: campaign/adgroup/ad/keyword perf, search_terms, audience, geo, change_history, change_event, device, hourly, age_gender, placement, quality_score, comparison, pmax_search_term_insights, pmax_network_breakdown, auction_insights, landing_page, asset_performance, shopping_performance, get_industry_benchmarks, reach_frequency, video_frequency, per_store_view, keyword_view
     ├── dashboard.py          #  2: mcc_performance_summary, account_dashboard
-    ├── audiences.py          # 12: list_segments, add/remove_targeting, suggest_geo, list_targeting, add/remove_audience_ad_group, create_custom_audience, add_audience/search_theme_signal, list/remove_asset_group_signals
-    ├── extensions.py         # 16: list_assets, sitelinks, callouts, snippets, call, remove, image, video, lead_form, price, promotion, link_campaign, link_ad_group, unlink, unlink_customer_assets
+    ├── audiences.py          # 15: list_segments, add/remove_targeting, suggest_geo, list_targeting, add/remove_audience_ad_group, create/list/update/remove_custom_audience, add_audience/search_theme_signal, list/remove_asset_group_signals
+    ├── extensions.py         # 15: list_assets, sitelinks, callouts, snippets, call, remove, image, video, lead_form, price, promotion, link_campaign, link_ad_group, unlink, unlink_customer_assets
     ├── labels.py             #  8: list, create, remove, apply_to_campaign/ad_group/ad/keyword, remove_from_resource
     ├── shared_sets.py        #  6: list, create, remove, list_members, link_to_campaign, unlink_from_campaign
-    ├── conversions.py        #  7: list_actions, get_action, create_action, update_action, import_offline, list_goals, update_goal
-    ├── targeting.py          # 14: device_bid, create/list/remove_ad_schedule, exclude_geo, add_geo, add/remove_language, age/gender/income_bid, demographic_batch, add/list_proximity_targeting
+    ├── conversions.py        #  9: list_actions, get_action, create_action, update_action, import_offline, list_goals, update_goal, list/update_campaign_conversion_goals
+    ├── targeting.py          # 18: device_bid, list_device_bid_adjustments, create/list/remove/update_ad_schedule, exclude_geo, add_geo, list_geo_targeting, add/remove/list_language_targeting, age/gender/income_bid, demographic_batch, add/list_proximity_targeting
     ├── recommendations.py    #  5: list, get, apply, dismiss, get_optimization_score
     ├── experiments.py        #  5: list, create, get, promote, end
     ├── batch.py              #  1: batch_set_status (multi-resource status changes)
@@ -114,7 +114,7 @@ Todos os 24 reports suportam datas customizadas:
 - Auth com retry e backoff exponencial (3 tentativas)
 - Timeout de 30s em create_image_asset (urllib)
 
-## Testes (714 testes, 94% cobertura)
+## Testes (823 testes, 95% cobertura)
 Cobertura de todos os 25 modulos de tools + utils, config, auth, server, exceptions:
 ```
 tests/

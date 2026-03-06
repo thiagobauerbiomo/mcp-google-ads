@@ -356,3 +356,129 @@ class TestUpdateConversionGoal:
 
         result = assert_error(update_conversion_goal("123", "DROP TABLE", "WEBSITE", biddable=True))
         assert "Failed to update conversion goal" in result["error"]
+
+
+class TestListCampaignConversionGoals:
+    @patch("mcp_google_ads.tools.conversions.get_service")
+    @patch("mcp_google_ads.tools.conversions.resolve_customer_id", return_value="123")
+    def test_returns_campaign_goals(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.conversions import list_campaign_conversion_goals
+
+        mock_row = MagicMock()
+        mock_row.campaign.id = 456
+        mock_row.campaign.name = "Test Campaign"
+        mock_row.campaign_conversion_goal.category.name = "CONTACT"
+        mock_row.campaign_conversion_goal.origin.name = "WEBSITE"
+        mock_row.campaign_conversion_goal.biddable = True
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = [mock_row]
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(list_campaign_conversion_goals("123", "456"))
+        assert result["data"]["count"] == 1
+        assert result["data"]["campaign_conversion_goals"][0]["category"] == "CONTACT"
+        assert result["data"]["campaign_conversion_goals"][0]["biddable"] is True
+        assert result["data"]["campaign_conversion_goals"][0]["campaign_id"] == "456"
+
+    @patch("mcp_google_ads.tools.conversions.get_service")
+    @patch("mcp_google_ads.tools.conversions.resolve_customer_id", return_value="123")
+    def test_returns_empty(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.conversions import list_campaign_conversion_goals
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = []
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(list_campaign_conversion_goals("123", "456"))
+        assert result["data"]["count"] == 0
+
+    @patch("mcp_google_ads.tools.conversions.resolve_customer_id", side_effect=Exception("fail"))
+    def test_error_handling(self, mock_resolve):
+        from mcp_google_ads.tools.conversions import list_campaign_conversion_goals
+
+        result = assert_error(list_campaign_conversion_goals("123", "456"))
+        assert "Failed to list campaign conversion goals" in result["error"]
+
+    def test_rejects_invalid_campaign_id(self):
+        from mcp_google_ads.tools.conversions import list_campaign_conversion_goals
+
+        result = assert_error(list_campaign_conversion_goals("123", "abc_invalid"))
+        assert "Failed" in result["error"]
+
+
+class TestUpdateCampaignConversionGoal:
+    @patch("mcp_google_ads.tools.conversions.get_service")
+    @patch("mcp_google_ads.tools.conversions.get_client")
+    @patch("mcp_google_ads.tools.conversions.resolve_customer_id", return_value="123")
+    def test_sets_biddable_true(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.conversions import update_campaign_conversion_goal
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(resource_name="customers/123/campaignConversionGoals/456~CONTACT~WEBSITE")]
+        mock_service = MagicMock()
+        mock_service.mutate_campaign_conversion_goals.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(update_campaign_conversion_goal("123", "456", "CONTACT", "WEBSITE", biddable=True))
+        assert "CONTACT~WEBSITE" in result["data"]["resource_name"]
+        assert "biddable=True" in result["message"]
+        assert "456" in result["message"]
+
+    @patch("mcp_google_ads.tools.conversions.get_service")
+    @patch("mcp_google_ads.tools.conversions.get_client")
+    @patch("mcp_google_ads.tools.conversions.resolve_customer_id", return_value="123")
+    def test_sets_biddable_false(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.conversions import update_campaign_conversion_goal
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(resource_name="customers/123/campaignConversionGoals/456~SUBMIT_LEAD_FORM~WEBSITE")]
+        mock_service = MagicMock()
+        mock_service.mutate_campaign_conversion_goals.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(update_campaign_conversion_goal("123", "456", "SUBMIT_LEAD_FORM", "WEBSITE", biddable=False))
+        assert "biddable=False" in result["message"]
+
+    @patch("mcp_google_ads.tools.conversions.get_service")
+    @patch("mcp_google_ads.tools.conversions.get_client")
+    @patch("mcp_google_ads.tools.conversions.resolve_customer_id", return_value="123")
+    def test_uses_correct_service(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.conversions import update_campaign_conversion_goal
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(resource_name="customers/123/campaignConversionGoals/456~CONTACT~WEBSITE")]
+        mock_service = MagicMock()
+        mock_service.mutate_campaign_conversion_goals.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        update_campaign_conversion_goal("123", "456", "CONTACT", "WEBSITE", biddable=True)
+        mock_get_service.assert_called_with("CampaignConversionGoalService")
+
+    @patch("mcp_google_ads.tools.conversions.resolve_customer_id", side_effect=Exception("API error"))
+    def test_error_handling(self, mock_resolve):
+        from mcp_google_ads.tools.conversions import update_campaign_conversion_goal
+
+        result = assert_error(update_campaign_conversion_goal("123", "456", "CONTACT", "WEBSITE", biddable=True))
+        assert "Failed to update campaign conversion goal" in result["error"]
+
+    def test_rejects_invalid_category(self):
+        from mcp_google_ads.tools.conversions import update_campaign_conversion_goal
+
+        result = assert_error(update_campaign_conversion_goal("123", "456", "DROP TABLE", "WEBSITE", biddable=True))
+        assert "Failed to update campaign conversion goal" in result["error"]
+
+    def test_rejects_invalid_campaign_id(self):
+        from mcp_google_ads.tools.conversions import update_campaign_conversion_goal
+
+        result = assert_error(update_campaign_conversion_goal("123", "abc_invalid", "CONTACT", "WEBSITE", biddable=True))
+        assert "Failed to update campaign conversion goal" in result["error"]

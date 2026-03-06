@@ -1460,3 +1460,162 @@ class TestPerStoreViewReport:
 
         result = assert_error(per_store_view_report("123"))
         assert "Failed" in result["error"]
+
+
+class TestChangeEventReport:
+    @patch("mcp_google_ads.tools.reporting.get_service")
+    @patch("mcp_google_ads.tools.reporting.resolve_customer_id", return_value="123")
+    def test_returns_change_events(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.reporting import change_event_report
+
+        mock_row = MagicMock()
+        mock_row.change_event.change_date_time = "2024-02-01 10:00:00"
+        mock_row.change_event.change_resource_type.name = "CAMPAIGN"
+        mock_row.change_event.change_resource_name = "customers/123/campaigns/111"
+        mock_row.change_event.user_email = "user@example.com"
+        mock_row.change_event.client_type.name = "GOOGLE_ADS_WEB_CLIENT"
+        mock_row.change_event.old_resource = "old_resource_value"
+        mock_row.change_event.new_resource = "new_resource_value"
+        mock_row.change_event.resource_change_operation.name = "UPDATE"
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = [mock_row]
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(change_event_report("123", "2024-02-01", "2024-02-28"))
+        assert result["data"]["count"] == 1
+        event = result["data"]["events"][0]
+        assert event["resource_type"] == "CAMPAIGN"
+        assert event["operation"] == "UPDATE"
+        assert event["user_email"] == "user@example.com"
+        assert event["old_resource"] == "old_resource_value"
+        assert event["new_resource"] == "new_resource_value"
+
+    @patch("mcp_google_ads.tools.reporting.get_service")
+    @patch("mcp_google_ads.tools.reporting.resolve_customer_id", return_value="123")
+    def test_date_filtering_in_query(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.reporting import change_event_report
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = []
+        mock_get_service.return_value = mock_service
+
+        assert_success(change_event_report("123", "2024-01-15", "2024-02-15"))
+        query_usado = mock_service.search.call_args[1]["query"]
+        assert "change_event.change_date_time >= '2024-01-15'" in query_usado
+        assert "change_event.change_date_time <= '2024-02-15'" in query_usado
+
+    @patch("mcp_google_ads.tools.reporting.get_service")
+    @patch("mcp_google_ads.tools.reporting.resolve_customer_id", return_value="123")
+    def test_resource_type_filter(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.reporting import change_event_report
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = []
+        mock_get_service.return_value = mock_service
+
+        assert_success(change_event_report("123", "2024-01-01", "2024-01-31", resource_type="AD_GROUP"))
+        query_usado = mock_service.search.call_args[1]["query"]
+        assert "change_event.change_resource_type = 'AD_GROUP'" in query_usado
+
+    @patch("mcp_google_ads.tools.reporting.get_service")
+    @patch("mcp_google_ads.tools.reporting.resolve_customer_id", return_value="123")
+    def test_api_exception(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.reporting import change_event_report
+
+        mock_service = MagicMock()
+        mock_service.search.side_effect = Exception("API error")
+        mock_get_service.return_value = mock_service
+
+        result = assert_error(change_event_report("123", "2024-01-01", "2024-01-31"))
+        assert "Failed" in result["error"]
+
+    @patch("mcp_google_ads.tools.reporting.get_service")
+    @patch("mcp_google_ads.tools.reporting.resolve_customer_id", return_value="123")
+    def test_invalid_start_date(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.reporting import change_event_report
+
+        result = assert_error(change_event_report("123", "not-a-date", "2024-01-31"))
+        assert "Data inválida" in result["error"]
+
+
+class TestKeywordViewReport:
+    @patch("mcp_google_ads.tools.reporting.get_service")
+    @patch("mcp_google_ads.tools.reporting.resolve_customer_id", return_value="123")
+    def test_returns_keyword_view_data(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.reporting import keyword_view_report
+
+        mock_row = MagicMock()
+        mock_row.ad_group_criterion.keyword.text = "tarot online"
+        mock_row.ad_group_criterion.keyword.match_type.name = "EXACT"
+        mock_row.ad_group_criterion.status.name = "ENABLED"
+        mock_row.ad_group_criterion.quality_info.quality_score = 8
+        mock_row.ad_group_criterion.quality_info.creative_quality_score.name = "ABOVE_AVERAGE"
+        mock_row.ad_group_criterion.quality_info.search_predicted_ctr.name = "ABOVE_AVERAGE"
+        mock_row.ad_group_criterion.quality_info.post_click_quality_score.name = "AVERAGE"
+        mock_row.ad_group_criterion.effective_cpc_bid_micros = 2_500_000
+        mock_row.ad_group_criterion.position_estimates.first_page_cpc_micros = 1_000_000
+        mock_row.ad_group_criterion.position_estimates.first_position_cpc_micros = 5_000_000
+        mock_row.ad_group_criterion.position_estimates.top_of_page_cpc_micros = 3_000_000
+        mock_row.campaign.name = "Tarot Campaign"
+        mock_row.ad_group.name = "Tarot AG"
+        mock_row.metrics.impressions = 1000
+        mock_row.metrics.clicks = 100
+        mock_row.metrics.cost_micros = 250_000_000
+        mock_row.metrics.conversions = 10.0
+        mock_row.metrics.average_cpc = 2_500_000
+        mock_row.metrics.ctr = 0.10
+        mock_row.metrics.search_impression_share = 0.75
+        mock_row.metrics.search_top_impression_percentage = 0.60
+        mock_row.metrics.search_absolute_top_impression_percentage = 0.30
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = [mock_row]
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(keyword_view_report("123"))
+        assert result["data"]["count"] == 1
+        kw = result["data"]["keywords"][0]
+        assert kw["keyword"] == "tarot online"
+        assert kw["match_type"] == "EXACT"
+        assert kw["quality_score"] == 8
+        assert kw["creative_quality"] == "ABOVE_AVERAGE"
+        assert kw["predicted_ctr"] == "ABOVE_AVERAGE"
+        assert kw["post_click_quality"] == "AVERAGE"
+        assert kw["effective_cpc_bid"] == 2.5
+        assert kw["first_page_cpc"] == 1.0
+        assert kw["first_position_cpc"] == 5.0
+        assert kw["top_of_page_cpc"] == 3.0
+        assert kw["campaign_name"] == "Tarot Campaign"
+        assert kw["ad_group_name"] == "Tarot AG"
+        assert kw["impressions"] == 1000
+        assert kw["clicks"] == 100
+        assert kw["ctr"] == 10.0
+        assert kw["search_impression_share"] == 75.0
+        assert kw["search_top_impression_pct"] == 60.0
+        assert kw["search_abs_top_impression_pct"] == 30.0
+
+    @patch("mcp_google_ads.tools.reporting.get_service")
+    @patch("mcp_google_ads.tools.reporting.resolve_customer_id", return_value="123")
+    def test_campaign_filter(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.reporting import keyword_view_report
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = []
+        mock_get_service.return_value = mock_service
+
+        assert_success(keyword_view_report("123", campaign_id="555"))
+        query_usado = mock_service.search.call_args[1]["query"]
+        assert "campaign.id = 555" in query_usado
+
+    @patch("mcp_google_ads.tools.reporting.get_service")
+    @patch("mcp_google_ads.tools.reporting.resolve_customer_id", return_value="123")
+    def test_api_exception(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.reporting import keyword_view_report
+
+        mock_service = MagicMock()
+        mock_service.search.side_effect = Exception("API error")
+        mock_get_service.return_value = mock_service
+
+        result = assert_error(keyword_view_report("123"))
+        assert "Failed" in result["error"]

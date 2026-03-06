@@ -879,3 +879,140 @@ class TestListListingGroupFilters:
 
         result = assert_error(list_listing_group_filters("123", "abc"))
         assert "Failed to list listing group filters" in result["error"]
+
+
+# ---------------------------------------------------------------------------
+# TestGetAssetGroup
+# ---------------------------------------------------------------------------
+
+class TestGetAssetGroup:
+    @patch("mcp_google_ads.tools.campaign_types.get_service")
+    @patch("mcp_google_ads.tools.campaign_types.resolve_customer_id", return_value="123")
+    def test_returns_asset_group(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.campaign_types import get_asset_group
+
+        mock_row = MagicMock()
+        mock_row.asset_group.id = 456
+        mock_row.asset_group.name = "My Group"
+        mock_row.asset_group.campaign = "customers/123/campaigns/789"
+        mock_row.asset_group.status.name = "ENABLED"
+        mock_row.asset_group.final_urls = ["https://example.com"]
+        mock_row.asset_group.final_mobile_urls = []
+        mock_row.asset_group.path1 = "shop"
+        mock_row.asset_group.path2 = "deals"
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = [mock_row]
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(get_asset_group("123", "456"))
+        assert result["data"]["asset_group_id"] == "456"
+        assert result["data"]["name"] == "My Group"
+        assert result["data"]["status"] == "ENABLED"
+        assert result["data"]["path1"] == "shop"
+        assert result["data"]["path2"] == "deals"
+
+    @patch("mcp_google_ads.tools.campaign_types.get_service")
+    @patch("mcp_google_ads.tools.campaign_types.resolve_customer_id", return_value="123")
+    def test_not_found(self, mock_resolve, mock_get_service):
+        from mcp_google_ads.tools.campaign_types import get_asset_group
+
+        mock_service = MagicMock()
+        mock_service.search.return_value = []
+        mock_get_service.return_value = mock_service
+
+        result = assert_error(get_asset_group("123", "456"))
+        assert "not found" in result["error"]
+
+    def test_invalid_id(self):
+        from mcp_google_ads.tools.campaign_types import get_asset_group
+
+        result = assert_error(get_asset_group("123", "abc"))
+        assert "Failed to get asset group" in result["error"]
+
+    @patch("mcp_google_ads.tools.campaign_types.resolve_customer_id", side_effect=Exception("Boom"))
+    def test_error_handling(self, mock_resolve):
+        from mcp_google_ads.tools.campaign_types import get_asset_group
+
+        result = assert_error(get_asset_group("123", "456"))
+        assert "Failed to get asset group" in result["error"]
+
+
+# ---------------------------------------------------------------------------
+# TestRemoveAssetGroup
+# ---------------------------------------------------------------------------
+
+class TestRemoveAssetGroup:
+    @patch("mcp_google_ads.tools.campaign_types.get_service")
+    @patch("mcp_google_ads.tools.campaign_types.get_client")
+    @patch("mcp_google_ads.tools.campaign_types.resolve_customer_id", return_value="123")
+    def test_success(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.campaign_types import remove_asset_group
+
+        client = MagicMock()
+        mock_client.return_value = client
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(resource_name="customers/123/assetGroups/456")]
+        mock_service = MagicMock()
+        mock_service.mutate_asset_groups.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(remove_asset_group("123", "456"))
+        assert result["data"]["resource_name"] == "customers/123/assetGroups/456"
+        assert "PERMANENTLY" in result["message"]
+
+    def test_invalid_id(self):
+        from mcp_google_ads.tools.campaign_types import remove_asset_group
+
+        result = assert_error(remove_asset_group("123", "abc"))
+        assert "Failed to remove asset group" in result["error"]
+
+    @patch("mcp_google_ads.tools.campaign_types.resolve_customer_id", side_effect=Exception("Boom"))
+    def test_error_handling(self, mock_resolve):
+        from mcp_google_ads.tools.campaign_types import remove_asset_group
+
+        result = assert_error(remove_asset_group("123", "456"))
+        assert "Failed to remove asset group" in result["error"]
+
+
+# ---------------------------------------------------------------------------
+# TestRemoveListingGroupFilter
+# ---------------------------------------------------------------------------
+
+class TestRemoveListingGroupFilter:
+    @patch("mcp_google_ads.tools.campaign_types.get_service")
+    @patch("mcp_google_ads.tools.campaign_types.get_client")
+    @patch("mcp_google_ads.tools.campaign_types.resolve_customer_id", return_value="123")
+    def test_success(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.campaign_types import remove_listing_group_filter
+
+        client = MagicMock()
+        mock_client.return_value = client
+        mock_response = MagicMock()
+        mock_response.results = [MagicMock(resource_name="customers/123/assetGroupListingGroupFilters/456~789")]
+        mock_service = MagicMock()
+        mock_service.mutate_asset_group_listing_group_filters.return_value = mock_response
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(remove_listing_group_filter("123", "456", "789"))
+        assert result["data"]["resource_name"] == "customers/123/assetGroupListingGroupFilters/456~789"
+        assert "removed" in result["message"]
+
+    def test_invalid_asset_group_id(self):
+        from mcp_google_ads.tools.campaign_types import remove_listing_group_filter
+
+        result = assert_error(remove_listing_group_filter("123", "abc", "789"))
+        assert "Failed to remove listing group filter" in result["error"]
+
+    def test_invalid_filter_id(self):
+        from mcp_google_ads.tools.campaign_types import remove_listing_group_filter
+
+        result = assert_error(remove_listing_group_filter("123", "456", "abc"))
+        assert "Failed to remove listing group filter" in result["error"]
+
+    @patch("mcp_google_ads.tools.campaign_types.resolve_customer_id", side_effect=Exception("Boom"))
+    def test_error_handling(self, mock_resolve):
+        from mcp_google_ads.tools.campaign_types import remove_listing_group_filter
+
+        result = assert_error(remove_listing_group_filter("123", "456", "789"))
+        assert "Failed to remove listing group filter" in result["error"]
