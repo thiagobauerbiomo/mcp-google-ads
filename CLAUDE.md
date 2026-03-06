@@ -5,7 +5,7 @@
 src/mcp_google_ads/
 ├── __init__.py        # __version__ = "0.1.0"
 ├── server.py          # Entry point (importa tools, roda mcp.run(), LOG_LEVEL via env)
-├── coordinator.py     # Singleton FastMCP("google-ads") com instructions detalhadas (201 tools)
+├── coordinator.py     # Singleton FastMCP("google-ads") com instructions detalhadas (242 tools)
 ├── auth.py            # GoogleAdsClient singleton via OAuth2 (retry com backoff exponencial)
 ├── config.py          # GoogleAdsConfig dataclass (env vars)
 ├── utils.py           # Helpers: resolve_customer_id, proto_to_dict, success/error_response,
@@ -15,32 +15,40 @@ src/mcp_google_ads/
 │                      #   build_date_clause)
 ├── exceptions.py      # GoogleAdsMCPError, AuthenticationError, RateLimitError, QuotaExhaustedError,
 │                      #   FRIENDLY_ERROR_MESSAGES (18 codes), get_friendly_error
-└── tools/             # 25 modulos (todos com logging estruturado)
+└── tools/             # 33 modulos (todos com logging estruturado)
     ├── accounts.py           #  4: list_accessible_customers, get_customer_info, get_account_hierarchy, list_customer_clients
+    ├── account_budget.py     #  5: list_account_budgets, get_account_budget, list/create/remove_account_budget_proposals
     ├── account_management.py #  3: list_account_links, get_billing_info, list_account_users
-    ├── campaigns.py          #  9: list, get, create, update, set_status, remove, list_labels, set_tracking_template, clone_campaign
-    ├── campaign_types.py     # 17: create_pmax, get/create/list/update/remove_asset_groups, create_display/video/shopping/demand_gen/app, add/remove/list_asset_group_assets, create/list/remove_listing_group_filters
+    ├── ad_customizers.py     #  5: list/create/remove_customizer_attributes, set_campaign/ad_group_customizer_value
     ├── ad_groups.py          #  7: list, get, create, update, set_status, remove, clone_ad_group
     ├── ads.py                #  7: list, get, create_rsa, create_responsive_display_ad, update, set_status, get_strength
-    ├── keywords.py           # 15: list, add, update, remove, bulk_update, neg_campaign, neg_ad_group, neg_shared, neg_pmax, generate_ideas, forecast, list_negative, add/list/remove_account_negative
-    ├── budgets.py            #  5: list, get, create, update, remove
-    ├── bidding.py            # 12: list, get, create, update, set_campaign_strategy, list/create/remove_bidding_data_exclusion, list/create/remove_seasonality_adjustment, list_accessible_bidding_strategies
-    ├── reporting.py          # 26: campaign/adgroup/ad/keyword perf, search_terms, audience, geo, change_history, change_event, device, hourly, age_gender, placement, quality_score, comparison, pmax_search_term_insights, pmax_network_breakdown, auction_insights, landing_page, asset_performance, shopping_performance, get_industry_benchmarks, reach_frequency, video_frequency, per_store_view, keyword_view
-    ├── dashboard.py          #  2: mcc_performance_summary, account_dashboard
-    ├── audiences.py          # 15: list_segments, add/remove_targeting, suggest_geo, list_targeting, add/remove_audience_ad_group, create/list/update/remove_custom_audience, add_audience/search_theme_signal, list/remove_asset_group_signals
-    ├── extensions.py         # 15: list_assets, sitelinks, callouts, snippets, call, remove, image, video, lead_form, price, promotion, link_campaign, link_ad_group, unlink, unlink_customer_assets
-    ├── labels.py             #  8: list, create, remove, apply_to_campaign/ad_group/ad/keyword, remove_from_resource
-    ├── shared_sets.py        #  6: list, create, remove, list_members, link_to_campaign, unlink_from_campaign
-    ├── conversions.py        #  9: list_actions, get_action, create_action, update_action, import_offline, list_goals, update_goal, list/update_campaign_conversion_goals
-    ├── targeting.py          # 18: device_bid, list_device_bid_adjustments, create/list/remove/update_ad_schedule, exclude_geo, add_geo, list_geo_targeting, add/remove/list_language_targeting, age/gender/income_bid, demographic_batch, add/list_proximity_targeting
-    ├── recommendations.py    #  5: list, get, apply, dismiss, get_optimization_score
-    ├── experiments.py        #  5: list, create, get, promote, end
-    ├── batch.py              #  1: batch_set_status (multi-resource status changes)
-    ├── diagnostics.py        #  3: campaign_health_check, validate_landing_page, budget_forecast
     ├── ai_generation.py      #  3: generate_ad_text, generate_ad_images, generate_audience_definition
+    ├── audiences.py          # 15: list_segments, add/remove_targeting, suggest_geo, list_targeting, add/remove_audience_ad_group, create/list/update/remove_custom_audience, add_audience/search_theme_signal, list/remove_asset_group_signals
+    ├── batch.py              #  1: batch_set_status (multi-resource status changes)
+    ├── bidding.py            # 12: list, get, create, update, set_campaign_strategy, list/create/remove_bidding_data_exclusion, list/create/remove_seasonality_adjustment, list_accessible_bidding_strategies
+    ├── budgets.py            #  5: list, get, create, update, remove
+    ├── campaign_criteria.py  #  5: list_campaign_criteria, add/remove_campaign_criterion, exclude_ip_addresses, list_ip_exclusions
+    ├── campaign_drafts.py    #  5: list, get, create, promote, remove
+    ├── campaign_types.py     # 17: create_pmax, get/create/list/update/remove_asset_groups, create_display/video/shopping/demand_gen/app, add/remove/list_asset_group_assets, create/list/remove_listing_group_filters
+    ├── campaigns.py          #  9: list, get, create, update, set_status, remove, list_labels, set_tracking_template, clone_campaign
+    ├── conversions.py        #  9: list_actions, get_action, create_action, update_action, import_offline, list_goals, update_goal, list/update_campaign_conversion_goals
+    ├── dashboard.py          #  2: mcc_performance_summary, account_dashboard
+    ├── diagnostics.py        #  3: campaign_health_check, validate_landing_page, budget_forecast
+    ├── experiments.py        #  5: list, create, get, promote, end
+    ├── extensions.py         # 15: list_assets, sitelinks, callouts, snippets, call, remove, image, video, lead_form, price, promotion, link_campaign, link_ad_group, unlink, unlink_customer_assets
     ├── incentives.py         #  2: fetch_incentive, apply_incentive
-    ├── youtube_uploads.py    #  3: create_youtube_video_upload, update_youtube_video_upload, remove_youtube_video_upload
-    └── search.py             #  1: execute_gaql (GAQL raw)
+    ├── keywords.py           # 15: list, add, update, remove, bulk_update, neg_campaign, neg_ad_group, neg_shared, neg_pmax, generate_ideas, forecast, list_negative, add/list/remove_account_negative
+    ├── labels.py             #  8: list, create, remove, apply_to_campaign/ad_group/ad/keyword, remove_from_resource
+    ├── recommendations.py    #  5: list, get, apply, dismiss, get_optimization_score
+    ├── remarketing.py        #  5: list/get/create/remove_remarketing_actions, list_combined_audiences
+    ├── reporting.py          # 26: campaign/adgroup/ad/keyword perf, search_terms, audience, geo, change_history, change_event, device, hourly, age_gender, placement, quality_score, comparison, pmax_search_term_insights, pmax_network_breakdown, auction_insights, landing_page, asset_performance, shopping_performance, get_industry_benchmarks, reach_frequency, video_frequency, per_store_view, keyword_view
+    ├── search.py             #  1: execute_gaql (GAQL raw)
+    ├── shared_sets.py        #  6: list, create, remove, list_members, link_to_campaign, unlink_from_campaign
+    ├── simulations.py        #  6: list_campaign/ad_group/keyword_simulations, get_bid_simulation_points, list_campaign_budget_simulations, get_keyword_plan_simulation
+    ├── smart_campaigns.py    #  4: suggest_budget, suggest_ad, suggest_keyword_themes, list_settings
+    ├── targeting.py          # 18: device_bid, list_device_bid_adjustments, create/list/remove/update_ad_schedule, exclude_geo, add_geo, list_geo_targeting, add/remove/list_language_targeting, age/gender/income_bid, demographic_batch, add/list_proximity_targeting
+    ├── user_lists.py         #  6: list, get, create_crm, add/remove_members, update
+    └── youtube_uploads.py    #  3: create_youtube_video_upload, update_youtube_video_upload, remove_youtube_video_upload
 ```
 
 ## Como Rodar
@@ -114,46 +122,55 @@ Todos os 24 reports suportam datas customizadas:
 - Auth com retry e backoff exponencial (3 tentativas)
 - Timeout de 30s em create_image_asset (urllib)
 
-## Testes (823 testes, 95% cobertura)
-Cobertura de todos os 25 modulos de tools + utils, config, auth, server, exceptions:
+## Testes (999 testes, 95% cobertura)
+Cobertura de todos os 33 modulos de tools + utils, config, auth, server, exceptions:
 ```
 tests/
 ├── conftest.py              # fixtures: mock_config, mock_google_ads_client, assert_success/error
-├── test_utils.py            # 45 testes (validadores, proto_to_dict, validate_batch, check_rate_limit_error, get_friendly_error)
+├── test_utils.py            # 45 testes
 ├── test_config.py           #  6 testes
 ├── test_auth.py             #  4 testes
-├── test_server.py           #  2 testes (main + LOG_LEVEL)
-├── test_campaigns.py        # 45 testes (9 tools incl. set_tracking_template, clone_campaign)
-├── test_campaign_types.py   # 51 testes (todas as 14 tools)
-├── test_ad_groups.py        # 41 testes (7 tools incl. clone_ad_group)
-├── test_ads.py              # 56 testes (7 tools incl. create_responsive_display_ad)
-├── test_keywords.py         # 45 testes (11 tools incl. neg_ad_group, pmax_neg)
-├── test_reporting.py        # 77 testes (24 reports incl. reach_frequency, video_frequency, per_store_view)
-├── test_labels.py           # 18 testes
-├── test_conversions.py      # 21 testes
-├── test_shared_sets.py      # 18 testes
-├── test_targeting.py        # 35 testes (14 tools incl. add/list proximity)
-├── test_search.py           #  7 testes
-├── test_dashboard.py        #  4 testes
-├── test_audiences.py        # 33 testes
-├── test_bidding.py          # 29 testes (5 tools incl. Smart Bidding Exploration tolerance)
-├── test_extensions.py       # 33 testes
-├── test_recommendations.py  # 15 testes
-├── test_experiments.py      # 14 testes
+├── test_server.py           #  2 testes
+├── test_account_budget.py   # 18 testes (account budgets + proposals)
 ├── test_account_management.py # 7 testes
 ├── test_accounts.py         # 14 testes
+├── test_ad_customizers.py   # 19 testes (customizer attributes + values)
+├── test_ad_groups.py        # 41 testes
+├── test_ads.py              # 56 testes
+├── test_ai_generation.py    # 10 testes
+├── test_audiences.py        # 33 testes
+├── test_batch.py            # 11 testes
+├── test_bidding.py          # 29 testes
+├── test_bidding_new.py      # 38 testes (data exclusions, seasonality, accessible strategies)
 ├── test_budgets.py          # 38 testes
-├── test_batch.py            # 11 testes (batch_set_status)
-├── test_diagnostics.py      # 13 testes (health_check incl. PMax checks, validate_landing_page, budget_forecast)
-├── test_ai_generation.py    # 10 testes (generate_ad_text, images, audience_definition)
-├── test_incentives.py       #  4 testes (fetch_incentive, apply_incentive)
-└── test_youtube_uploads.py  #  6 testes (create, update, remove youtube video upload)
+├── test_campaign_criteria.py # 28 testes (criteria CRUD + IP exclusions)
+├── test_campaign_drafts.py  # 20 testes (drafts CRUD + promote)
+├── test_campaign_types.py   # 51 testes
+├── test_campaigns.py        # 45 testes
+├── test_conversions.py      # 21 testes
+├── test_dashboard.py        #  4 testes
+├── test_diagnostics.py      # 13 testes
+├── test_experiments.py      # 14 testes
+├── test_extensions.py       # 33 testes
+├── test_incentives.py       #  4 testes
+├── test_keywords.py         # 45 testes
+├── test_labels.py           # 18 testes
+├── test_recommendations.py  # 15 testes
+├── test_remarketing.py      # 15 testes (remarketing actions + combined audiences)
+├── test_reporting.py        # 77 testes
+├── test_search.py           #  7 testes
+├── test_shared_sets.py      # 18 testes
+├── test_simulations.py      # 34 testes (campaign/ad_group/keyword simulations)
+├── test_smart_campaigns.py  # 13 testes (suggest budget/ad/themes + settings)
+├── test_targeting.py        # 35 testes
+├── test_user_lists.py       # 29 testes (CRM lists, customer match, members)
+└── test_youtube_uploads.py  #  6 testes
 ```
 
-Modulos com 100% cobertura (20): auth, config, coordinator, exceptions, utils, __init__, tools/__init__, accounts, account_management, audiences, batch, budgets, experiments, incentives, recommendations, search, shared_sets
-Modulos acima de 95%: ads (99%), ai_generation (99%), keywords (98%), bidding (98%), campaign_types (97%), ad_groups (95%), youtube_uploads (94%)
-Modulos acima de 90%: labels (94%), diagnostics (94%), targeting (93%), server (93%), conversions (91%), reporting (90%)
-Modulos acima de 85%: dashboard (89%), extensions (88%), campaigns (86%)
+Modulos com 100% cobertura (28): auth, config, coordinator, exceptions, utils, __init__, tools/__init__, accounts, account_management, audiences, batch, budgets, campaign_drafts, experiments, incentives, recommendations, remarketing, search, shared_sets, smart_campaigns
+Modulos acima de 95%: ads (99%), ai_generation (99%), user_lists (99%), keywords (98%), bidding (98%), simulations (95%), campaign_types (97%), ad_groups (95%)
+Modulos acima de 90%: labels (94%), diagnostics (94%), youtube_uploads (94%), targeting (93%), server (93%), conversions (91%), reporting (90%)
+Modulos acima de 85%: dashboard (89%), extensions (88%), campaign_criteria (87%), campaigns (86%)
 
 ## Dependencias Principais
 - `google-ads >= 29.0.0, < 30.0.0` (API v23, pinned major)

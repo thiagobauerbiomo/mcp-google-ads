@@ -6,13 +6,13 @@ from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP(
     "google-ads",
-    instructions="""MCP Server for Google Ads API v23 — 201 tools for full CRUD operations.
+    instructions="""MCP Server for Google Ads API v23 — 242 tools for full CRUD operations.
 
 ## Account Structure
 This server connects to an MCC (Manager) account that manages multiple client accounts.
 Always start by listing accessible customers, then select a specific client account (customer_id) for operations.
 
-## Tool Categories (201 tools across 25 modules)
+## Tool Categories (242 tools across 33 modules)
 - **Accounts (4):** list_accessible_customers, get_customer_info, get_account_hierarchy, list_customer_clients
 - **Account Management (3):** list_account_links, get_billing_info, list_account_users
 - **Campaigns (9):** list, get, create, update, set_status, remove, list_labels, set_tracking_template, clone_campaign
@@ -38,6 +38,14 @@ Always start by listing accessible customers, then select a specific client acco
 - **Incentives (2):** fetch_incentive, apply_incentive
 - **YouTube Uploads (3):** create_youtube_video_upload, update_youtube_video_upload, remove_youtube_video_upload
 - **GAQL (1):** execute_gaql (raw SELECT-only queries)
+- **Simulations (6):** list_campaign/ad_group/keyword_simulations, get_bid_simulation_points, list_campaign_budget_simulations, get_keyword_plan_simulation
+- **Campaign Drafts (5):** list, get, create, promote, remove
+- **Ad Customizers (5):** list/create/remove_customizer_attributes, set_campaign/ad_group_customizer_value
+- **User Lists (6):** list, get, create_crm, add/remove_members, update
+- **Campaign Criteria (5):** list, add, remove, exclude_ip_addresses, list_ip_exclusions
+- **Account Budget (5):** list_budgets, get_budget, list/create/remove_proposals
+- **Remarketing (5):** list/get/create/remove_remarketing_actions, list_combined_audiences
+- **Smart Campaigns (4):** suggest_budget, suggest_ad, suggest_keyword_themes, list_settings
 
 ## Typical Workflow
 1. `list_accessible_customers` → discover the MCC account
