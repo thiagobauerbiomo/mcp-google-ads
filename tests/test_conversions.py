@@ -175,6 +175,77 @@ class TestUpdateConversionAction:
         )
         assert "No fields to update" in result["error"]
 
+    @patch("mcp_google_ads.tools.conversions.get_service")
+    @patch("mcp_google_ads.tools.conversions.get_client")
+    @patch("mcp_google_ads.tools.conversions.resolve_customer_id", return_value="123")
+    def test_updates_attribution_model(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.conversions import update_conversion_action
+
+        client = MagicMock()
+        mock_client.return_value = client
+        mock_service = MagicMock()
+        mock_service.mutate_conversion_actions.return_value.results = [
+            MagicMock(resource_name="customers/123/conversionActions/666")
+        ]
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(
+            update_conversion_action("123", "666", attribution_model="GOOGLE_SEARCH_ATTRIBUTION_DATA_DRIVEN")
+        )
+        assert result["data"]["resource_name"] == "customers/123/conversionActions/666"
+
+    @patch("mcp_google_ads.tools.conversions.get_service")
+    @patch("mcp_google_ads.tools.conversions.get_client")
+    @patch("mcp_google_ads.tools.conversions.resolve_customer_id", return_value="123")
+    def test_updates_lookback_window(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.conversions import update_conversion_action
+
+        client = MagicMock()
+        mock_client.return_value = client
+        mock_service = MagicMock()
+        mock_service.mutate_conversion_actions.return_value.results = [
+            MagicMock(resource_name="customers/123/conversionActions/666")
+        ]
+        mock_get_service.return_value = mock_service
+
+        result = assert_success(
+            update_conversion_action("123", "666", click_through_lookback_window_days=90)
+        )
+        assert result["data"]["resource_name"] == "customers/123/conversionActions/666"
+
+    @patch("mcp_google_ads.tools.conversions.get_service")
+    @patch("mcp_google_ads.tools.conversions.get_client")
+    @patch("mcp_google_ads.tools.conversions.resolve_customer_id", return_value="123")
+    def test_rejects_invalid_lookback_window(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.conversions import update_conversion_action
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        result = assert_error(
+            update_conversion_action("123", "666", click_through_lookback_window_days=0)
+        )
+        assert "between 1 and 90" in result["error"]
+
+        result = assert_error(
+            update_conversion_action("123", "666", click_through_lookback_window_days=91)
+        )
+        assert "between 1 and 90" in result["error"]
+
+    @patch("mcp_google_ads.tools.conversions.get_service")
+    @patch("mcp_google_ads.tools.conversions.get_client")
+    @patch("mcp_google_ads.tools.conversions.resolve_customer_id", return_value="123")
+    def test_rejects_invalid_view_lookback_window(self, mock_resolve, mock_client, mock_get_service):
+        from mcp_google_ads.tools.conversions import update_conversion_action
+
+        client = MagicMock()
+        mock_client.return_value = client
+
+        result = assert_error(
+            update_conversion_action("123", "666", view_through_lookback_window_days=31)
+        )
+        assert "between 1 and 30" in result["error"]
+
 
 class TestImportOfflineConversions:
     @patch("mcp_google_ads.tools.conversions.get_service")

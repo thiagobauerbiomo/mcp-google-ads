@@ -85,15 +85,31 @@ class TestCreatePerformanceMaxCampaign:
         result2 = MagicMock(resource_name="customers/123/campaigns/2")
         result3 = MagicMock(resource_name="customers/123/assetGroups/3")
 
-        mock_response = MagicMock()
-        mock_response.mutate_operation_responses = [
+        # Text asset creation responses (step 1 — separate mutate calls)
+        text_asset_response = MagicMock()
+        text_asset_result = MagicMock()
+        text_asset_result.asset_result.resource_name = "customers/123/assets/99"
+        text_asset_result._pb.HasField.return_value = True
+        text_asset_response.mutate_operation_responses = [text_asset_result] * 15
+
+        # Main batch response (step 2 — budget + campaign + brand assets + asset group + links)
+        # With brand_guidelines_enabled=True (default): budget(0), campaign(1), bn_ca(2), ag(3)
+        main_response = MagicMock()
+        main_response.mutate_operation_responses = [
             MagicMock(campaign_budget_result=result1),
             MagicMock(campaign_result=result2),
+            MagicMock(campaign_asset_result=MagicMock()),  # business_name CampaignAsset
             MagicMock(asset_group_result=result3),
-        ]
+        ] + [MagicMock() for _ in range(30)]  # extra slots for text/image/video links
 
         mock_service = MagicMock()
-        mock_service.mutate.return_value = mock_response
+        mock_service.mutate.side_effect = [
+            text_asset_response,  # headlines
+            text_asset_response,  # descriptions
+            text_asset_response,  # long_headlines
+            text_asset_response,  # business_name
+            main_response,        # main batch
+        ]
         mock_get_service.return_value = mock_service
 
         return client

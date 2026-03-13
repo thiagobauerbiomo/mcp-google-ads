@@ -184,6 +184,9 @@ def update_conversion_action(
     status: Annotated[str | None, "New status: ENABLED, PAUSED, REMOVED, HIDDEN"] = None,
     default_value: Annotated[float | None, "New default conversion value"] = None,
     counting_type: Annotated[str | None, "ONE_PER_CLICK or MANY_PER_CLICK"] = None,
+    attribution_model: Annotated[str | None, "Attribution model: GOOGLE_ADS_LAST_CLICK, GOOGLE_SEARCH_ATTRIBUTION_DATA_DRIVEN, GOOGLE_SEARCH_ATTRIBUTION_FIRST_CLICK, GOOGLE_SEARCH_ATTRIBUTION_LINEAR, GOOGLE_SEARCH_ATTRIBUTION_TIME_DECAY, GOOGLE_SEARCH_ATTRIBUTION_POSITION_BASED"] = None,
+    click_through_lookback_window_days: Annotated[int | None, "Click-through lookback window in days (1-90)"] = None,
+    view_through_lookback_window_days: Annotated[int | None, "View-through lookback window in days (1-30)"] = None,
 ) -> str:
     """Update an existing conversion action's settings.
 
@@ -214,6 +217,22 @@ def update_conversion_action(
             validate_enum_value(counting_type, "counting_type")
             conversion_action.counting_type = getattr(client.enums.ConversionActionCountingTypeEnum, counting_type)
             fields.append("counting_type")
+        if attribution_model is not None:
+            validate_enum_value(attribution_model, "attribution_model")
+            conversion_action.attribution_model_settings.attribution_model = getattr(
+                client.enums.AttributionModelEnum, attribution_model
+            )
+            fields.append("attribution_model_settings.attribution_model")
+        if click_through_lookback_window_days is not None:
+            if not 1 <= click_through_lookback_window_days <= 90:
+                return error_response("click_through_lookback_window_days must be between 1 and 90")
+            conversion_action.click_through_lookback_window_days = click_through_lookback_window_days
+            fields.append("click_through_lookback_window_days")
+        if view_through_lookback_window_days is not None:
+            if not 1 <= view_through_lookback_window_days <= 30:
+                return error_response("view_through_lookback_window_days must be between 1 and 30")
+            conversion_action.view_through_lookback_window_days = view_through_lookback_window_days
+            fields.append("view_through_lookback_window_days")
 
         if not fields:
             return error_response("No fields to update")

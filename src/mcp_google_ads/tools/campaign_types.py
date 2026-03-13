@@ -36,19 +36,61 @@ def create_performance_max_campaign(
     bidding_strategy: Annotated[str, "MAXIMIZE_CONVERSIONS or MAXIMIZE_CONVERSION_VALUE"] = "MAXIMIZE_CONVERSIONS",
     target_cpa_micros: Annotated[int | None, "Target CPA in micros (for MAXIMIZE_CONVERSIONS)"] = None,
     target_roas: Annotated[float | None, "Target ROAS (for MAXIMIZE_CONVERSION_VALUE, e.g., 3.0 for 300%)"] = None,
+    logo_asset_id: Annotated[str | None, "Existing SQUARE logo asset ID (1:1 ratio, min 128x128)"] = None,
+    image_asset_ids: Annotated[list[str] | None, "Existing MARKETING_IMAGE asset IDs to link to asset group"] = None,
+    square_image_asset_ids: Annotated[list[str] | None, "Existing SQUARE_MARKETING_IMAGE asset IDs to link"] = None,
+    portrait_image_asset_ids: Annotated[list[str] | None, "Existing PORTRAIT_MARKETING_IMAGE asset IDs to link"] = None,
+    video_asset_ids: Annotated[list[str] | None, "Existing YOUTUBE_VIDEO asset IDs to link to asset group"] = None,
+    search_themes: Annotated[list[str] | None, "Search theme signals for the asset group (max 25)"] = None,
+    brand_guidelines_enabled: Annotated[bool, "Enable Brand Guidelines (requires square logo_asset_id)"] = True,
 ) -> str:
     """Create a Performance Max campaign with an asset group and text assets.
 
-    Created PAUSED by default. PMax campaigns use all Google channels (Search, Display, YouTube, Gmail, Maps, Discover).
+    Created PAUSED by default. PMax campaigns use all Google channels.
     Requires at least 3 headlines, 2 descriptions, and 1 long headline.
+
+    IMPORTANT: Text assets (headlines, descriptions, long_headlines) are created in a
+    separate API call first, then linked in the main batch. This is the official Google
+    pattern required for PMax asset group validation.
+
+    Brand Guidelines mode (default):
+    - logo_asset_id MUST be a square image (1:1 ratio, min 128x128)
+    - Business name and logo are linked as CampaignAssets (campaign level)
+    - Do NOT link brand assets at asset group level in this mode
+
+    Non-Brand Guidelines mode (brand_guidelines_enabled=False):
+    - Business name and logo are linked as AssetGroupAssets (asset group level)
     """
     try:
         cid = resolve_customer_id(customer_id)
         client = get_client()
+        gads_service = get_service("GoogleAdsService")
 
+        # Step 1: Create text assets in separate calls (official Google pattern)
+        # PMax asset group validation requires real resource names for text assets
+        def _create_text_assets(texts: list[str]) -> list[str]:
+            ops = []
+            for text in texts:
+                op = client.get_type("MutateOperation")
+                op.asset_operation.create.text_asset.text = text
+                ops.append(op)
+            resp = gads_service.mutate(customer_id=cid, mutate_operations=ops)
+            return [
+                r.asset_result.resource_name
+                for r in resp.mutate_operation_responses
+                if r._pb.HasField("asset_result")
+            ]
+
+        headline_rns = _create_text_assets(headlines)
+        description_rns = _create_text_assets(descriptions)
+        long_headline_rns = _create_text_assets(long_headlines)
+        bn_rns = _create_text_assets([business_name])
+        bn_rn = bn_rns[0]
+
+        # Step 2: Build main batch (budget + campaign + campaign assets + asset group + links)
         operations = []
 
-        # 1. Create budget
+        # 2a. Budget
         budget_op = client.get_type("MutateOperation")
         budget = budget_op.campaign_budget_operation.create
         budget.name = f"Budget for PMax - {name}"
@@ -59,13 +101,16 @@ def create_performance_max_campaign(
         budget.resource_name = temp_budget_rn
         operations.append(budget_op)
 
-        # 2. Create campaign
+        # 2b. Campaign
         campaign_op = client.get_type("MutateOperation")
         campaign = campaign_op.campaign_operation.create
         campaign.name = name
         campaign.status = client.enums.CampaignStatusEnum.PAUSED
         campaign.advertising_channel_type = client.enums.AdvertisingChannelTypeEnum.PERFORMANCE_MAX
         campaign.campaign_budget = temp_budget_rn
+        campaign.brand_guidelines_enabled = brand_guidelines_enabled
+        # Required enum field (3 = DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING)
+        campaign.contains_eu_political_advertising = 3
 
         if bidding_strategy == "MAXIMIZE_CONVERSIONS":
             campaign.maximize_conversions.target_cpa_micros = target_cpa_micros or 0
@@ -76,103 +121,127 @@ def create_performance_max_campaign(
         campaign.resource_name = temp_campaign_rn
         operations.append(campaign_op)
 
-        # 3. Create asset group
-        asset_group_op = client.get_type("MutateOperation")
-        asset_group = asset_group_op.asset_group_operation.create
-        asset_group.name = asset_group_name
-        asset_group.campaign = temp_campaign_rn
-        asset_group.status = client.enums.AssetGroupStatusEnum.PAUSED
-        asset_group.final_urls.append(final_url)
+        # 2c. Brand assets linked at campaign or asset group level
+        if brand_guidelines_enabled:
+            # CampaignAsset for business_name
+            bn_ca_op = client.get_type("MutateOperation")
+            bn_ca = bn_ca_op.campaign_asset_operation.create
+            bn_ca.field_type = client.enums.AssetFieldTypeEnum.BUSINESS_NAME
+            bn_ca.campaign = temp_campaign_rn
+            bn_ca.asset = bn_rn
+            operations.append(bn_ca_op)
+
+            # CampaignAsset for square logo (required for Brand Guidelines)
+            if logo_asset_id:
+                safe_logo = validate_numeric_id(logo_asset_id, "logo_asset_id")
+                logo_rn = f"customers/{cid}/assets/{safe_logo}"
+                logo_ca_op = client.get_type("MutateOperation")
+                logo_ca = logo_ca_op.campaign_asset_operation.create
+                logo_ca.field_type = client.enums.AssetFieldTypeEnum.LOGO
+                logo_ca.campaign = temp_campaign_rn
+                logo_ca.asset = logo_rn
+                operations.append(logo_ca_op)
+
+        # 2d. Asset Group
+        ag_op = client.get_type("MutateOperation")
+        ag = ag_op.asset_group_operation.create
+        ag.name = asset_group_name
+        ag.campaign = temp_campaign_rn
+        ag.status = client.enums.AssetGroupStatusEnum.PAUSED
+        ag.final_urls.append(final_url)
         temp_ag_rn = f"customers/{cid}/assetGroups/-3"
-        asset_group.resource_name = temp_ag_rn
-        operations.append(asset_group_op)
+        ag.resource_name = temp_ag_rn
+        operations.append(ag_op)
+        ag_op_index = len(operations) - 1
 
-        # 4. Create text assets and link them
-        asset_counter = -4
-
-        for headline in headlines:
-            asset_op = client.get_type("MutateOperation")
-            asset = asset_op.asset_operation.create
-            asset.text_asset.text = headline
-            temp_asset_rn = f"customers/{cid}/assets/{asset_counter}"
-            asset.resource_name = temp_asset_rn
-            operations.append(asset_op)
-
+        # 2e. Link text assets to asset group (real resource names)
+        for rn in headline_rns:
             link_op = client.get_type("MutateOperation")
             link = link_op.asset_group_asset_operation.create
             link.asset_group = temp_ag_rn
-            link.asset = temp_asset_rn
+            link.asset = rn
             link.field_type = client.enums.AssetFieldTypeEnum.HEADLINE
             operations.append(link_op)
-            asset_counter -= 1
 
-        for desc in descriptions:
-            asset_op = client.get_type("MutateOperation")
-            asset = asset_op.asset_operation.create
-            asset.text_asset.text = desc
-            temp_asset_rn = f"customers/{cid}/assets/{asset_counter}"
-            asset.resource_name = temp_asset_rn
-            operations.append(asset_op)
-
+        for rn in description_rns:
             link_op = client.get_type("MutateOperation")
             link = link_op.asset_group_asset_operation.create
             link.asset_group = temp_ag_rn
-            link.asset = temp_asset_rn
+            link.asset = rn
             link.field_type = client.enums.AssetFieldTypeEnum.DESCRIPTION
             operations.append(link_op)
-            asset_counter -= 1
 
-        for long_headline in long_headlines:
-            asset_op = client.get_type("MutateOperation")
-            asset = asset_op.asset_operation.create
-            asset.text_asset.text = long_headline
-            temp_asset_rn = f"customers/{cid}/assets/{asset_counter}"
-            asset.resource_name = temp_asset_rn
-            operations.append(asset_op)
-
+        for rn in long_headline_rns:
             link_op = client.get_type("MutateOperation")
             link = link_op.asset_group_asset_operation.create
             link.asset_group = temp_ag_rn
-            link.asset = temp_asset_rn
+            link.asset = rn
             link.field_type = client.enums.AssetFieldTypeEnum.LONG_HEADLINE
             operations.append(link_op)
-            asset_counter -= 1
 
-        # Business name asset
-        bn_op = client.get_type("MutateOperation")
-        bn_asset = bn_op.asset_operation.create
-        bn_asset.text_asset.text = business_name
-        temp_bn_rn = f"customers/{cid}/assets/{asset_counter}"
-        bn_asset.resource_name = temp_bn_rn
-        operations.append(bn_op)
+        # 2f. Non-BG mode: link brand assets at asset group level
+        if not brand_guidelines_enabled:
+            bn_ag_op = client.get_type("MutateOperation")
+            bn_ag = bn_ag_op.asset_group_asset_operation.create
+            bn_ag.asset_group = temp_ag_rn
+            bn_ag.asset = bn_rn
+            bn_ag.field_type = client.enums.AssetFieldTypeEnum.BUSINESS_NAME
+            operations.append(bn_ag_op)
 
-        bn_link_op = client.get_type("MutateOperation")
-        bn_link = bn_link_op.asset_group_asset_operation.create
-        bn_link.asset_group = temp_ag_rn
-        bn_link.asset = temp_bn_rn
-        bn_link.field_type = client.enums.AssetFieldTypeEnum.BUSINESS_NAME
-        operations.append(bn_link_op)
+            if logo_asset_id:
+                safe_logo = validate_numeric_id(logo_asset_id, "logo_asset_id")
+                logo_ag_op = client.get_type("MutateOperation")
+                logo_ag = logo_ag_op.asset_group_asset_operation.create
+                logo_ag.asset_group = temp_ag_rn
+                logo_ag.asset = f"customers/{cid}/assets/{safe_logo}"
+                logo_ag.field_type = client.enums.AssetFieldTypeEnum.LOGO
+                operations.append(logo_ag_op)
 
-        # 5. Create listing group filter (required for PMax)
-        lg_op = client.get_type("MutateOperation")
-        listing_group = lg_op.asset_group_listing_group_filter_operation.create
-        listing_group.asset_group = temp_ag_rn
-        listing_group.type_ = client.enums.ListingGroupFilterTypeEnum.UNIT_INCLUDED
-        operations.append(lg_op)
+        # 2g. Link existing image/video assets to asset group
+        _asset_field_map = {
+            "image_asset_ids": ("MARKETING_IMAGE", image_asset_ids),
+            "square_image_asset_ids": ("SQUARE_MARKETING_IMAGE", square_image_asset_ids),
+            "portrait_image_asset_ids": ("PORTRAIT_MARKETING_IMAGE", portrait_image_asset_ids),
+            "video_asset_ids": ("YOUTUBE_VIDEO", video_asset_ids),
+        }
+        for param_name, (field_type_name, asset_ids) in _asset_field_map.items():
+            if asset_ids:
+                for aid in asset_ids:
+                    safe_aid = validate_numeric_id(aid, param_name)
+                    link_op = client.get_type("MutateOperation")
+                    link = link_op.asset_group_asset_operation.create
+                    link.asset_group = temp_ag_rn
+                    link.asset = f"customers/{cid}/assets/{safe_aid}"
+                    link.field_type = getattr(client.enums.AssetFieldTypeEnum, field_type_name)
+                    operations.append(link_op)
 
-        # Execute batch
-        gads_service = get_service("GoogleAdsService")
+        # 2h. Search theme signals (optional)
+        if search_themes:
+            for theme in search_themes:
+                signal_op = client.get_type("MutateOperation")
+                signal = signal_op.asset_group_signal_operation.create
+                signal.asset_group = temp_ag_rn
+                signal.search_theme.text = theme
+                operations.append(signal_op)
+
+        # Execute main batch
         response = gads_service.mutate(customer_id=cid, mutate_operations=operations)
 
         campaign_rn = response.mutate_operation_responses[1].campaign_result.resource_name
         campaign_id = campaign_rn.split("/")[-1]
 
+        ag_rn = response.mutate_operation_responses[ag_op_index].asset_group_result.resource_name
+        ag_id = ag_rn.split("/")[-1]
+
         return success_response(
             {
                 "campaign_id": campaign_id,
                 "campaign_resource_name": campaign_rn,
+                "asset_group_id": ag_id,
                 "status": "PAUSED",
+                "brand_guidelines_enabled": brand_guidelines_enabled,
                 "operations_count": len(operations),
+                "text_assets_created": len(headline_rns) + len(description_rns) + len(long_headline_rns) + 1,
             },
             message=f"Performance Max campaign '{name}' created as PAUSED with asset group",
         )

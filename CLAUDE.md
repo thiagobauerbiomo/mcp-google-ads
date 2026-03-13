@@ -188,12 +188,13 @@ Configurado em pyproject.toml:
 
 ## Knowledge Base (Skills)
 Referencia de estrategias e recipes em `/home/thiago/projetos/skills/agentes_ai/`:
-- `05_Google_Ads_AI_Agents.md` — 5 blueprints de automacao (analise, keywords, criacao, monitoramento, audiencias)
-- `06_google_ads_estrategias.md` — Estrutura full-funnel, progressao de lances, sinais, audiencias, API v23
-- `07_google_ads_gaql_recipes.md` — 20+ queries GAQL prontas (performance, keywords, search terms, QS, demograficos, geo, devices, horarios, budget, concorrencia)
-- `08_google_ads_checklist.md` — Checklists de setup, auditoria semanal/mensal, pre-lancamento, criterios de decisao rapida
-- `09_google_ads_forecast.md` — Workflow de previsao (5 passos), benchmarks por vertical 2026
-- `10_google_ads_cpc_optimization.md` — **Playbook CPC minimo:** Ad Rank (formula), Quality Score (3 pilares), bidding progressivo (4 fases), extensoes, negativas, RSA EXCELLENT, diagnosticos, workflow completo setup→otimizacao, casos reais Biomo (CM-WA, Ponto do Carro)
+- `05_Google_Ads_AI_Agents.md` — 7 blueprints de automacao (analise, keywords, criacao, monitoramento, audiencias, simulacao, seguranca)
+- `06_google_ads_estrategias.md` — Estrutura full-funnel, progressao de lances, sinais, audiencias, simulacoes, API v23
+- `07_google_ads_gaql_recipes.md` — 30+ queries GAQL prontas (performance, keywords, search terms, QS, demograficos, geo, devices, horarios, budget, concorrencia, simulacoes, campaign conv goals, user lists, criteria, customizers, account budgets, remarketing, drafts)
+- `08_google_ads_checklist.md` — Checklists de setup, auditoria semanal/mensal, pre-lancamento, simulacoes, criterios de decisao rapida
+- `09_google_ads_forecast.md` — Workflow de previsao (6 passos), simulacoes da API, benchmarks por vertical 2026
+- `10_google_ads_cpc_optimization.md` — **Playbook CPC minimo:** Ad Rank, Quality Score (3 pilares), bidding progressivo (4 fases), extensoes, negativas, RSA EXCELLENT, diagnosticos (incl. campaign conversion goals), workflow completo, casos reais Biomo (CM-WA, Ponto do Carro conv goals)
+- `11_google_ads_advanced_tools.md` — **Referencia rapida:** 41 tools avancadas por caso de uso (simulacoes, drafts, customizers, user lists, criteria/IP blocks, account budget, remarketing, smart campaigns)
 
 Consultar essas skills antes de tomar decisoes de otimizacao ou criar automacoes.
 
